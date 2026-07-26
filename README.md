@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-TBD-lightgrey" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License" /></a>
   <a href="#build"><img src="https://img.shields.io/badge/platform-Windows%20x64-0078D4" alt="Windows x64" /></a>
   <a href="docs/LUA_VM.md"><img src="https://img.shields.io/badge/docs-Lua%20VM-blue" alt="Lua VM docs" /></a>
 </p>
@@ -147,7 +147,6 @@ vanille/                    # repo root
 |-------|----------|
 | [docs/LUA_VM.md](Vanille/docs/LUA_VM.md) | Lua API — `ui`, `Drawing`, services, sandbox rules |
 | [docs/BRAND_LOGO.md](Vanille/docs/BRAND_LOGO.md) | Replace the menu logo via `png_to_logo_c.py` |
-| [GITHUB_REPO_PLAN.md](GITHUB_REPO_PLAN.md) | What to include/exclude when publishing |
 
 ---
 
@@ -161,6 +160,6 @@ This repository ships **source code only** — no prebuilt binaries, embedded pa
 
 ## License
 
-License TBD. Add `LICENSE` before the first public release (MIT is used on [maryl](https://github.com/Daziusm/maryl) and [scc-opensdk](https://github.com/Daziusm/scc-opensdk); [wimcord](https://github.com/Daziusm/wimcord) uses GPL-3.0-or-later).
+[MIT License](LICENSE). Copyright (c) 2026 Daziusm.
 
 Third-party components retain their own licenses (ImGui, FreeType, Lua, Plus Jakarta Sans OFL, etc.).
