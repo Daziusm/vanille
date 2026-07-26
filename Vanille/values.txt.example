@@ -1,0 +1,9 @@
+// Example values.txt — do not use as-is.
+// Generate a current file with:
+//   python vanille/tools/generate_values.py
+// Requires roblox-dumper offsets.json for your Roblox client version.
+
+$offsets = [
+    // version-xxxxxxxx (roblox-dumper)
+    'task_scheduler::pointer' => '0x0',
+];

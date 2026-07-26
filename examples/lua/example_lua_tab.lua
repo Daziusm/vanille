@@ -1,0 +1,8 @@
+local tab_id = ui.create_tab("lua tab example")
+ui.clear_tab(tab_id)
+ui.checkbox(tab_id, "enabled", "Enabled", true)
+ui.colorpicker(tab_id, "accent", "Accent", { 0.3, 0.8, 1.0, 1.0 })
+ui.checkbox(tab_id, "use_key", "Use Key", false)
+ui.keybind(tab_id, "key", "Key", 0x46, 1)
+ui.slider(tab_id, "amount", "Amount", 0, 100, 32)
+ui.dropdown(tab_id, "mode", "Mode", { "A", "B", "C" }, 0)

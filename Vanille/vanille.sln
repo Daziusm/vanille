@@ -1,0 +1,22 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36511.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vanille", "vanille.vcxproj", "{7AA2C5B9-CC0C-4B2E-8321-75A311E96CFB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7AA2C5B9-CC0C-4B2E-8321-75A311E96CFB}.Release|x64.ActiveCfg = Release|x64
+		{7AA2C5B9-CC0C-4B2E-8321-75A311E96CFB}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E886D7E7-130E-418F-B40A-DFDD491107C3}
+	EndGlobalSection
+EndGlobal

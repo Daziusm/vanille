@@ -1,0 +1,137 @@
+# =============================================================================
+# Vanille repo — C++ overlay + ChocolaLoader (slim scope)
+# =============================================================================
+
+# --- Secrets & local config ---
+.env
+.env.*
+*.env
+secrets/
+credentials.json
+**/LoaderSettings.local.json
+
+# --- Excluded top-level folders (not part of public repo) ---
+roblox-dumper/
+chocola-helper/
+test-dist/
+loader-alone-test/
+loader/gamesense-Loader/
+Vanille/uitest/
+Vanille/.think/
+
+# --- Offset / dumper tooling (local only) ---
+Vanille/tools/generate_values.py
+values.txt
+**/values.txt
+!values.txt.example
+
+# --- Build outputs ---
+build/
+dist/
+out/
+bin/
+obj/
+x64/
+x86/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+*.dir/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+payload_staging/
+
+# --- Binaries & debug symbols ---
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.o
+*.a
+*.lib
+*.exp
+*.idb
+*.ipdb
+*.iobj
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+
+# Exceptions: commit static/import libs that are true vendored deps
+!extern/**/*.lib
+!third_party/**/*.lib
+# But never commit VMProtect or other commercial SDKs
+extern/vmSoft/
+**/VMProtectSDK*.dll
+**/VMProtectSDK*.lib
+
+# --- Embedded payloads (built locally, never committed) ---
+**/payload.zip
+**/payload_staging/
+loader/dist/
+
+# --- Prebuilt Lua runtime (build from third_party/lua) ---
+**/lua53-64.dll
+**/lua54.dll
+
+# --- Visual Studio ---
+.vs/
+*.vcxproj.user
+*.vcxproj.filters.user
+ipch/
+*.opensdf
+*.sdf
+*.cache
+
+# --- C# / MSBuild ---
+*.csproj.user
+packages/
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# --- Dev-only sources ---
+source/features/tests.cpp
+
+# --- OS & editor ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# --- Logs & temp ---
+*.log
+*.tmp
+*.temp
+.cache/
+.download_staging/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- User configs (created at runtime next to exe) ---
+configs/
+**/configs/*.json
+!examples/
+
+Vanille/extern/intermediates/
+

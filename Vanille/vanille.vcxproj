@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{7aa2c5b9-cc0c-4b2e-8321-75a311e96cfb}</ProjectGuid>
+    <RootNamespace>vanille</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)BuildCustomizations\masm.props" Condition="'$(Platform)'=='x64'" />
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)build</OutDir>
+    <IntDir>$(SolutionDir)extern\intermediates</IntDir>
+    <TargetName>vanille</TargetName>
+    <IncludePath>$(SolutionDir)extern\freetype\include;C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files %28x86%29\Microsoft DirectX SDK %28June 2010%29\Lib\x64;$(SolutionDir)extern\freetype\win64;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;VANILLE_ENABLE_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)source\;$(ProjectDir)extern\;$(ProjectDir)extern\resources\;$(ProjectDir)extern\imgui;$(ProjectDir)extern\freetype\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(ProjectDir)extern\freetype\win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if not exist "$(OutDir)fonts" mkdir "$(OutDir)fonts"
+xcopy /Y /Q "$(ProjectDir)fonts\*.ttf" "$(OutDir)fonts\" &gt;nul 2&gt;&amp;1
+if exist "$(ProjectDir)third_party\lua\lua53-64.dll" copy /Y "$(ProjectDir)third_party\lua\lua53-64.dll" "$(OutDir)" &gt;nul</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="extern\imgui\backends\imgui_impl_dx11.cpp" />
+    <ClCompile Include="extern\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="extern\imgui\imgui.cpp" />
+    <ClCompile Include="extern\imgui\imgui_draw.cpp" />
+    <ClCompile Include="extern\imgui\imgui_tables.cpp" />
+    <ClCompile Include="extern\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="extern\imgui\misc\cpp\imgui_stdlib.cpp" />
+    <ClCompile Include="extern\imgui\misc\freetype\imgui_freetype.cpp">
+      <ObjectFileName>$(IntDir)imgui_freetype_misc.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="extern\text_editor\TextEditor.cpp" />
+    <ClCompile Include="extern\resources\fonts\logo.c" />
+    <ClCompile Include="extern\resources\fonts\splash_sprite.c" />
+    <ClCompile Include="source\cache\dead_body_cache.cpp" />
+    <ClCompile Include="source\cache\local_player_cache.cpp" />
+    <ClCompile Include="source\cache\player_cache.cpp" />
+    <ClCompile Include="source\configs\config_manager.cpp" />
+    <ClCompile Include="source\lua\datamodel.cpp" />
+    <ClCompile Include="source\lua\instance.cpp">
+      <ObjectFileName>$(IntDir)lua_instance.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="source\lua\lua_console.cpp" />
+    <ClCompile Include="source\lua\lua_drawing.cpp" />
+    <ClCompile Include="source\lua\lua_ui.cpp" />
+    <ClCompile Include="source\lua\lua_ui_bridge.cpp" />
+    <ClCompile Include="source\lua\lua_vm.cpp" />
+    <ClCompile Include="source\lua\script_storage.cpp" />
+    <ClCompile Include="source\lua\services_lighting.cpp" />
+    <ClCompile Include="source\lua\services_players.cpp" />
+    <ClCompile Include="source\lua\services_run_service.cpp" />
+    <ClCompile Include="source\lua\services_user_input_service.cpp" />
+    <ClCompile Include="source\lua\services_workspace.cpp" />
+    <ClCompile Include="source\features\aimbot.cpp" />
+    <ClCompile Include="source\features\arm_modifier.cpp" />
+    <ClCompile Include="source\features\esp.cpp" />
+    <ClCompile Include="source\features\target_hud.cpp" />
+    <ClCompile Include="source\features\free_aim.cpp" />
+    <ClCompile Include="source\features\pf_silent.cpp" />
+    <ClCompile Include="source\features\hacks.cpp" />
+    <ClCompile Include="source\features\lighting.cpp" />
+    <ClCompile Include="source\features\visibility.cpp" />
+    <ClCompile Include="source\features\triggerbot.cpp" />
+    <ClCompile Include="source\features\shooter.cpp" />
+    <ClCompile Include="source\features\tests.cpp" />
+    <ClCompile Include="source\utils\tinygltf_stb.cpp" />
+    <ClCompile Include="extern\clipper2\src\clipper.engine.cpp" />
+    <ClCompile Include="extern\clipper2\src\clipper.offset.cpp" />
+    <ClCompile Include="extern\clipper2\src\clipper.rectclip.cpp" />
+    <ClCompile Include="source\gui\imgui_initialize.cpp" />
+    <ClCompile Include="source\gui\menu\menu.cpp" />
+    <ClCompile Include="source\gui\overlay.cpp" />
+    <ClCompile Include="source\gui\assistant.cpp" />
+    <ClCompile Include="source\gui\media_session.cpp" />
+    <ClCompile Include="source\gui\widgets\button\button.cpp" />
+    <ClCompile Include="source\gui\widgets\checkbox\checkbox.cpp" />
+    <ClCompile Include="source\gui\widgets\child\child.cpp" />
+    <ClCompile Include="source\gui\widgets\colorpicker\colorpicker.cpp" />
+    <ClCompile Include="source\gui\widgets\dropdown\dropdown.cpp" />
+    <ClCompile Include="source\gui\widgets\input\input.cpp" />
+    <ClCompile Include="source\gui\widgets\keybind\keybind.cpp" />
+    <ClCompile Include="source\gui\widgets\slider\slider.cpp" />
+    <ClCompile Include="source\gui\widgets\text\text.cpp" />
+    <ClCompile Include="source\main.cpp" />
+    <ClCompile Include="source\entry_point.cpp" />
+    <ClCompile Include="extern\auth\auth.cpp" />
+    <ClCompile Include="source\memory\memory.cpp" />
+    <ClCompile Include="source\sdk\engine.cpp" />
+    <ClCompile Include="source\sdk\instance.cpp" />
+    <ClCompile Include="source\sdk\mesh_part.cpp" />
+    <ClCompile Include="source\utils\console.cpp" />
+    <ClCompile Include="source\utils\logger.cpp" />
+    <ClCompile Include="source\utils\window_utils.cpp" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Platform)'=='x64'">
+    <MASM Include="source\memory\luck.asm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="extern\auth\auth.h" />
+    <ClInclude Include="extern\imgui\backends\imgui_impl_dx11.h" />
+    <ClInclude Include="extern\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="extern\imgui\imconfig.h" />
+    <ClInclude Include="extern\imgui\imgui.h" />
+    <ClInclude Include="extern\imgui\imgui_freetype.h" />
+    <ClInclude Include="extern\imgui\imgui_internal.h" />
+    <ClInclude Include="extern\imgui\imstb_rectpack.h" />
+    <ClInclude Include="extern\imgui\imstb_textedit.h" />
+    <ClInclude Include="extern\imgui\imstb_truetype.h" />
+    <ClInclude Include="extern\imgui\misc\cpp\imgui_stdlib.h" />
+    <ClInclude Include="extern\imgui\misc\freetype\imgui_freetype.h" />
+    <ClInclude Include="extern\imgui\misc\single_file\imgui_single_file.h" />
+    <ClInclude Include="extern\imgui\stb_image.h" />
+    <ClInclude Include="extern\resources\fonts\font_consolas_bold.h" />
+    <ClInclude Include="extern\resources\fonts\font_consolas_regular.h" />
+    <ClInclude Include="extern\resources\fonts\font_smallest_pixel-7.h" />
+    <ClInclude Include="extern\resources\fonts\font_verdana_bold.h" />
+    <ClInclude Include="extern\resources\fonts\font_verdana_regular.h" />
+    <ClInclude Include="extern\simplemaths\SimpleMath.h" />
+    <ClInclude Include="extern\text_editor\TextEditor.h" />
+    <ClInclude Include="extern\tinygltf\json.hpp" />
+    <ClInclude Include="extern\tinygltf\stb_image.h" />
+    <ClInclude Include="extern\tinygltf\stb_image_write.h" />
+    <ClInclude Include="extern\tinygltf\tiny_gltf.h" />
+    <ClInclude Include="source\features\hacks.h" />
+    <ClInclude Include="source\features\visibility.h" />
+    <ClInclude Include="source\gui\colors\colors.h" />
+    <ClInclude Include="source\gui\imgui_initialize.h" />
+    <ClInclude Include="source\gui\fonts\cursor_bytes.h" />
+    <ClInclude Include="source\gui\fonts\font_verdana_bold.h" />
+    <ClInclude Include="source\gui\fonts\font_verdana_regular.h" />
+    <ClInclude Include="source\gui\globals\globals.h" />
+    <ClInclude Include="source\gui\menu\menu.h" />
+    <ClInclude Include="source\gui\overlay.hpp" />
+    <ClInclude Include="source\gui\assistant.h" />
+    <ClInclude Include="source\gui\resources\fonts.h" />
+    <ClInclude Include="source\gui\widgets\keybind\keybind.h" />
+    <ClInclude Include="source\gui\widgets\widgets.h" />
+    <ClInclude Include="source\lua\lua_ui.h" />
+    <ClInclude Include="source\memory\memory.h" />
+    <ClInclude Include="source\features\aimbot.h" />
+    <ClInclude Include="source\features\arm_modifier.h" />
+    <ClInclude Include="source\features\esp.h" />
+    <ClInclude Include="source\features\free_aim.h" />
+    <ClInclude Include="source\features\pf_silent.h" />
+    <ClInclude Include="source\features\lighting.h" />
+    <ClInclude Include="source\features\triggerbot.h" />
+    <ClInclude Include="source\features\shooter.h" />
+    <ClInclude Include="source\features\tests.h" />
+    <ClInclude Include="source\cache\player_parts.h" />
+    <ClInclude Include="source\cache\player_cache.h" />
+    <ClInclude Include="source\cache\local_player_cache.h" />
+    <ClInclude Include="source\cache\dead_body_cache.h" />
+    <ClInclude Include="source\configs\config_manager.h" />
+    <ClInclude Include="source\lua\datamodel.h" />
+    <ClInclude Include="source\lua\instance.h" />
+    <ClInclude Include="source\lua\lua_console.h" />
+    <ClInclude Include="source\lua\lua_drawing.h" />
+    <ClInclude Include="source\lua\lua_ui_bridge.h" />
+    <ClInclude Include="source\lua\lua_vm.h" />
+    <ClInclude Include="source\lua\script_storage.h" />
+    <ClInclude Include="source\lua\services_lighting.h" />
+    <ClInclude Include="source\lua\services_players.h" />
+    <ClInclude Include="source\lua\services_run_service.h" />
+    <ClInclude Include="source\lua\services_user_input_service.h" />
+    <ClInclude Include="source\lua\services_workspace.h" />
+    <ClInclude Include="source\globals\globals.h" />
+    <ClInclude Include="source\memory\nt_write.h" />
+    <ClInclude Include="source\sdk\camera.h" />
+    <ClInclude Include="source\sdk\engine.h" />
+    <ClInclude Include="source\sdk\humanoid.h" />
+    <ClInclude Include="source\sdk\instance.h" />
+    <ClInclude Include="source\sdk\mesh_part.h" />
+    <ClInclude Include="source\sdk\math_types.h" />
+    <ClInclude Include="source\sdk\mouse.h" />
+    <ClInclude Include="source\sdk\offsets.h" />
+    <ClInclude Include="source\sdk\part.h" />
+    <ClInclude Include="source\sdk\player.h" />
+    <ClInclude Include="source\sdk\value.h" />
+    <ClInclude Include="source\utils\console.h" />
+    <ClInclude Include="source\utils\logger.h" />
+    <ClInclude Include="source\utils\window_utils.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(VCTargetsPath)BuildCustomizations\masm.targets" Condition="'$(Platform)'=='x64'" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
