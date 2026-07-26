@@ -11,11 +11,13 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License" /></a>
+  <a href="https://github.com/Daziusm/vanille/releases/latest"><img src="https://img.shields.io/github/v/release/Daziusm/vanille?label=download&color=fffaee" alt="Latest release" /></a>
   <a href="#build"><img src="https://img.shields.io/badge/platform-Windows%20x64-0078D4" alt="Windows x64" /></a>
   <a href="docs/LUA_VM.md"><img src="https://img.shields.io/badge/docs-Lua%20VM-blue" alt="Lua VM docs" /></a>
 </p>
 
 <p align="center">
+  <a href="#download">Download</a> ·
   <a href="#features">Features</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#build">Build</a> ·
@@ -73,6 +75,20 @@ The hero image above shows the full modular layout. Individual panels:
 | **ESP Preview** | Live character preview for overlay tuning |
 | **Appearance** | Overlay & theme — shadows, accent color, menu bind |
 | **Player List** | In-game players with teleport and spectate actions |
+
+---
+
+## Download
+
+Prebuilt **loader** for Windows x64:
+
+**[Download Vanille.exe (latest release)](https://github.com/Daziusm/vanille/releases/latest)**
+
+1. Download `Vanille.exe` from [Releases](https://github.com/Daziusm/vanille/releases)
+2. Launch it, select Roblox, click **Load**
+3. Provide your own `values.txt` next to the staged payload if scanning fails (see [Build](#build) — not shipped in releases)
+
+The release loader embeds the overlay payload and stages it to `%LOCALAPPDATA%\Chocola\`. Source is in this repo if you want to build yourself.
 
 ---
 
@@ -154,7 +170,7 @@ vanille/                    # repo root
 
 **Educational and personal use only.** vanille interacts with the Roblox client via external memory techniques. Using it on live games may violate [Roblox Terms of Use](https://en.help.roblox.com/hc/en-us/articles/203313410) and risks account action. The authors are **not affiliated with Roblox Corporation**. Use at your own risk.
 
-This repository ships **source code only** — no prebuilt binaries, embedded payloads, offset files, or license keys.
+This repository ships **source code** for the overlay and loader. Prebuilt loader binaries are on [Releases](https://github.com/Daziusm/vanille/releases). Offset files (`values.txt`) are not included.
 
 ---
 
