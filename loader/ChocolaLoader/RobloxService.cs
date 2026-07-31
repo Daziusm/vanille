@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -32,7 +33,33 @@ namespace Chocola
 
             var first = processes[0];
             var title = GetMainWindowTitle(first.Id);
-            return "Roblox (PID " + first.Id + ")" + (string.IsNullOrWhiteSpace(title) ? "" : " - " + title);
+            var version = GetClientVersion();
+            var versionNote = string.IsNullOrEmpty(version) ? "" : " [" + version + "]";
+            return "Roblox (PID " + first.Id + ")" + versionNote + (string.IsNullOrWhiteSpace(title) ? "" : " - " + title);
+        }
+
+        public static string GetClientVersion()
+        {
+            try
+            {
+                var proc = Process.GetProcessesByName("RobloxPlayerBeta").FirstOrDefault();
+                if (proc == null)
+                    return null;
+
+                var path = proc.MainModule?.FileName;
+                if (string.IsNullOrEmpty(path))
+                    return null;
+
+                var folder = Path.GetFileName(Path.GetDirectoryName(path));
+                if (folder != null && folder.StartsWith("version-", StringComparison.OrdinalIgnoreCase))
+                    return folder;
+            }
+            catch
+            {
+                // MainModule can fail on some systems; offsets step will fall back to cached file.
+            }
+
+            return null;
         }
 
         static string GetMainWindowTitle(int pid)

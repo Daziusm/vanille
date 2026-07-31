@@ -93,6 +93,13 @@ this.Text = "Vanille";
                 return;
             }
 
+            if (!OffsetUpdater.TryRefresh(_settings.InstallPath, msg => label4.Text = msg, out error))
+            {
+                MessageBox.Show(error ?? "Could not update offsets.", "Vanille", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Application.Exit();
+                return;
+            }
+
             if (!PayloadService.LaunchVanille(_settings.InstallPath, msg => label4.Text = msg, out error))
             {
                 MessageBox.Show(error ?? "Launch failed.", "Vanille", MessageBoxButtons.OK, MessageBoxIcon.Error);
