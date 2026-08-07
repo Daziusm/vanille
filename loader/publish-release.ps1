@@ -42,8 +42,15 @@ $commit
 "@
 }
 
-$existing = gh release view $tag 2>$null
-if ($LASTEXITCODE -eq 0) {
+$existing = $false
+try {
+    gh release view $tag *> $null
+    if ($LASTEXITCODE -eq 0) { $existing = $true }
+}
+catch {
+    $existing = $false
+}
+if ($existing) {
     Write-Host "Updating existing release $tag..."
     gh release upload $tag $distExe --clobber
     gh release edit $tag --title $title --notes $Notes
