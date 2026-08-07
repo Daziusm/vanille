@@ -19,7 +19,11 @@ file(COPY "${vanille_exe}" DESTINATION "${staging_dir}")
 
 set(values_txt "${VANILLE_ROOT}/values.txt")
 if(NOT EXISTS "${values_txt}")
-    message(FATAL_ERROR "values.txt not found at ${values_txt}")
+    set(values_txt "${VANILLE_ROOT}/values.txt.example")
+    if(NOT EXISTS "${values_txt}")
+        message(FATAL_ERROR "values.txt not found. Place Vanille/values.txt or values.txt.example before staging payload.")
+    endif()
+    message(WARNING "Vanille/values.txt missing — staging placeholder offsets (loader refreshes at runtime).")
 endif()
 file(COPY "${values_txt}" DESTINATION "${staging_dir}")
 
