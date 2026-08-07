@@ -402,7 +402,7 @@ namespace Chocola
             yield return Pair("task_scheduler::job_stride", "0x10");
             yield return Pair("task_scheduler::render_job_to_fake_datamodel", G(o, "RenderJob", "FakeDataModel", strict));
             yield return Pair("task_scheduler::fake_datamodel_to_datamodel", G(o, "FakeDataModel", "RealDataModel", strict));
-            yield return Pair("task_scheduler::render_job_to_renderview", G(o, "VisualEngine", "RenderView", strict));
+            yield return Pair("task_scheduler::render_job_to_renderview", G(o, "RenderJob", "RenderView", strict));
             yield return Pair("task_scheduler::max_fps", G(o, "TaskScheduler", "MaxFPS", strict));
             yield return Pair("task_scheduler::target_fps", "0x0");
             yield return Pair("datamodel::datamodel_ptr0", G(o, "FakeDataModel", "Pointer", strict));
@@ -411,6 +411,7 @@ namespace Chocola
             yield return Pair("visualengine::visualengine_ptr", G(o, "VisualEngine", "Pointer", strict));
             yield return Pair("visualengine::view_matrix", G(o, "VisualEngine", "ViewMatrix", strict));
             yield return Pair("visualengine::dimensions", G(o, "VisualEngine", "Dimensions", strict));
+            yield return Pair("visualengine::render_view", G(o, "VisualEngine", "RenderView", strict));
             yield return Pair("renderview::force_flag_byte", G(o, "RenderView", "LightingValid", strict));
             yield return Pair("renderview::force_flag_bool", G(o, "RenderView", "SkyValid", strict));
             yield return Pair("players::local_player", G(o, "Player", "LocalPlayer", strict));

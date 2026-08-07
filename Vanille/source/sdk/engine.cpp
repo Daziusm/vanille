@@ -267,8 +267,7 @@ namespace
             }
         }
 
-        // Fallback path for newer layouts: VisualEngine + 0xB50.
-        constexpr std::uintptr_t k_visualengine_renderview_offset = 0xB50;
+        // Fallback: VisualEngine + render_view offset (not RenderJob).
         const auto module_base = memory->get_module_address();
         if (!module_base || !roblox::offsets::visualengine::visualengine_ptr)
         {
@@ -289,10 +288,20 @@ namespace
             return 0;
         }
 
-        const auto fallback_renderview = memory->read<std::uintptr_t>(visualengine + k_visualengine_renderview_offset);
+        const auto ve_renderview_offset = roblox::offsets::visualengine::render_view;
+        if (!ve_renderview_offset)
+        {
+            if (should_log_engine_failure())
+            {
+                logger_core::log_warning("rbx engine -> visualengine render_view offset not configured");
+            }
+            return 0;
+        }
+
+        const auto fallback_renderview = memory->read<std::uintptr_t>(visualengine + ve_renderview_offset);
         if (!fallback_renderview && should_log_engine_failure())
         {
-            logger_core::log_warning("rbx engine -> failed to read renderview ptr via visualengine @ 0x{:X}", visualengine + k_visualengine_renderview_offset);
+            logger_core::log_warning("rbx engine -> failed to read renderview ptr via visualengine @ 0x{:X}", visualengine + ve_renderview_offset);
         }
 
         return fallback_renderview;
