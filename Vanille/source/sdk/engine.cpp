@@ -238,6 +238,28 @@ namespace
             return 0;
         }
 
+        const auto module_base = memory->get_module_address();
+        if (module_base && roblox::offsets::visualengine::visualengine_ptr && roblox::offsets::visualengine::render_view)
+        {
+            const auto visualengine = memory->read<std::uintptr_t>(module_base + roblox::offsets::visualengine::visualengine_ptr);
+            if (visualengine)
+            {
+                const auto renderview = memory->read<std::uintptr_t>(
+                    visualengine + roblox::offsets::visualengine::render_view);
+                if (renderview)
+                {
+                    return renderview;
+                }
+
+                if (should_log_engine_failure())
+                {
+                    logger_core::log_warning(
+                        "rbx engine -> failed to read renderview ptr via visualengine @ 0x{:X}",
+                        visualengine + roblox::offsets::visualengine::render_view);
+                }
+            }
+        }
+
         const auto render_job = find_render_job();
         if (render_job)
         {
@@ -261,44 +283,7 @@ namespace
             }
         }
 
-        // Fallback: VisualEngine + render_view offset (not RenderJob).
-        const auto module_base = memory->get_module_address();
-        if (!module_base || !roblox::offsets::visualengine::visualengine_ptr)
-        {
-            if (should_log_engine_failure())
-            {
-                logger_core::log_warning("rbx engine -> visualengine pointer offset not configured");
-            }
-            return 0;
-        }
-
-        const auto visualengine = memory->read<std::uintptr_t>(module_base + roblox::offsets::visualengine::visualengine_ptr);
-        if (!visualengine)
-        {
-            if (should_log_engine_failure())
-            {
-                logger_core::log_warning("rbx engine -> failed to read visualengine ptr @ 0x{:X}", module_base + roblox::offsets::visualengine::visualengine_ptr);
-            }
-            return 0;
-        }
-
-        const auto ve_renderview_offset = roblox::offsets::visualengine::render_view;
-        if (!ve_renderview_offset)
-        {
-            if (should_log_engine_failure())
-            {
-                logger_core::log_warning("rbx engine -> visualengine render_view offset not configured");
-            }
-            return 0;
-        }
-
-        const auto fallback_renderview = memory->read<std::uintptr_t>(visualengine + ve_renderview_offset);
-        if (!fallback_renderview && should_log_engine_failure())
-        {
-            logger_core::log_warning("rbx engine -> failed to read renderview ptr via visualengine @ 0x{:X}", visualengine + ve_renderview_offset);
-        }
-
-        return fallback_renderview;
+        return 0;
     }
 }
 

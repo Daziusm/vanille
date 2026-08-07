@@ -176,5 +176,6 @@ bool LoadOffsets()
         return false;
     }
 
+    std::cout << "[vanille] loaded offsets from " << values_path.string() << "\n";
     return true;
 }

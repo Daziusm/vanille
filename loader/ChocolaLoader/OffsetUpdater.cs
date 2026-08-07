@@ -11,10 +11,14 @@ using System.Web.Script.Serialization;
 
 namespace Chocola
 {
-    /// Fetches offsets from offsets.imtheo.lol, local dumps, or roblox-dumper when the client version changes.
+    /// Fetches offsets.imtheo.lol offsets.txt when the Roblox client version changes.
     internal static class OffsetUpdater
     {
         const string ImtheoLatestVersion = "version-d584fb6c717a43d9";
+
+        static readonly Regex ImtheoTxtLine = new Regex(
+            @"^(\w+)::(\w+)\s*=\s*(0x[0-9a-fA-F]+)\s*$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         static readonly HttpClient Http = new HttpClient
         {
@@ -47,7 +51,7 @@ namespace Chocola
 
             var valuesPath = Path.Combine(installDir, "values.txt");
             var cached = ReadCachedVersion(valuesPath);
-            if (cached == version && File.Exists(valuesPath))
+            if (cached == version && File.Exists(valuesPath) && !ValuesLookStale(valuesPath))
             {
                 status?.Invoke("Offsets OK (" + version + ").");
                 return true;
@@ -113,15 +117,27 @@ namespace Chocola
                     return payload;
             }
 
-            status?.Invoke("Trying offsets.imtheo.lol...");
+            status?.Invoke("Trying offsets.imtheo.lol offsets.txt...");
             bool imtheoNotFound;
-            payload = TryFetchImtheo(version, out imtheoNotFound);
+            payload = TryFetchImtheoTxt(version, out imtheoNotFound);
             if (!IsUsableOffsets(payload?.Offsets) && imtheoNotFound && version != ImtheoLatestVersion)
             {
-                status?.Invoke("No dump for " + version + " — trying latest imtheo offsets...");
-                payload = TryFetchImtheo(ImtheoLatestVersion, out _);
+                status?.Invoke("No offsets.txt for " + version + " — trying latest imtheo offsets...");
+                payload = TryFetchImtheoTxt(ImtheoLatestVersion, out _);
                 if (IsUsableOffsets(payload?.Offsets))
-                    payload.Source = "imtheo-latest";
+                    payload.Source = "imtheo-txt-latest";
+            }
+
+            if (IsUsableOffsets(payload?.Offsets))
+                return payload;
+
+            status?.Invoke("Trying offsets.imtheo.lol offsets.json...");
+            payload = TryFetchImtheoJson(version, out imtheoNotFound);
+            if (!IsUsableOffsets(payload?.Offsets) && imtheoNotFound && version != ImtheoLatestVersion)
+            {
+                payload = TryFetchImtheoJson(ImtheoLatestVersion, out _);
+                if (IsUsableOffsets(payload?.Offsets))
+                    payload.Source = "imtheo-json-latest";
             }
 
             if (IsUsableOffsets(payload?.Offsets))
@@ -130,15 +146,7 @@ namespace Chocola
             foreach (var candidate in LocalOffsetCandidates(installDir, settings))
             {
                 status?.Invoke("Trying " + candidate + "...");
-                payload = TryLoadLocalFile(candidate);
-                if (IsUsableOffsets(payload?.Offsets))
-                    return payload;
-            }
-
-            if (TryRunDumper(settings, status, out var dumpedPath))
-            {
-                status?.Invoke("Reading dumper output...");
-                payload = TryLoadLocalFile(dumpedPath);
+                payload = TryLoadLocalOffsets(candidate);
                 if (IsUsableOffsets(payload?.Offsets))
                     return payload;
             }
@@ -151,19 +159,28 @@ namespace Chocola
             if (!string.IsNullOrWhiteSpace(settings?.OffsetsPath))
                 yield return settings.OffsetsPath.Trim();
 
+            yield return Path.Combine(installDir, "offsets.txt");
             yield return Path.Combine(installDir, "offsets.json");
-            yield return Path.Combine(installDir, "offsets-imtheo.json");
+        }
 
-            if (!string.IsNullOrWhiteSpace(settings?.SourcePath))
+        static OffsetPayload TryFetchImtheoTxt(string versionFolder, out bool notFound)
+        {
+            notFound = false;
+            var url = "https://offsets.imtheo.lol/" + versionFolder + "/offsets.txt";
+            try
             {
-                var source = settings.SourcePath.Trim();
-                yield return Path.Combine(source, "roblox-dumper", "offsets.json");
-                yield return Path.Combine(source, "roblox-dumper", "offsets-imtheo.json");
-                yield return Path.Combine(source, "offsets.json");
+                var txt = Http.GetStringAsync(url).GetAwaiter().GetResult();
+                return ParseImtheoOffsetsTxt(txt, "imtheo");
+            }
+            catch (Exception ex)
+            {
+                if (IsNotFound(ex))
+                    notFound = true;
+                return null;
             }
         }
 
-        static OffsetPayload TryFetchImtheo(string versionFolder, out bool notFound)
+        static OffsetPayload TryFetchImtheoJson(string versionFolder, out bool notFound)
         {
             notFound = false;
             var url = "https://offsets.imtheo.lol/" + versionFolder + "/offsets.json";
@@ -204,14 +221,18 @@ namespace Chocola
             }
         }
 
-        static OffsetPayload TryLoadLocalFile(string path)
+        static OffsetPayload TryLoadLocalOffsets(string path)
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                 return null;
 
             try
             {
-                return ParseOffsetsJson(File.ReadAllText(path, Encoding.UTF8), "local");
+                var text = File.ReadAllText(path, Encoding.UTF8);
+                if (path.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                    return ParseImtheoOffsetsTxt(text, "local");
+
+                return ParseOffsetsJson(text, "local");
             }
             catch
             {
@@ -219,89 +240,41 @@ namespace Chocola
             }
         }
 
-        static bool TryRunDumper(LoaderSettings settings, Action<string> status, out string offsetsPath)
+        static OffsetPayload ParseImtheoOffsetsTxt(string text, string sourceLabel)
         {
-            offsetsPath = null;
-            if (!RobloxService.IsRobloxRunning())
-                return false;
-
-            var dumperExe = FindDumperExecutable(settings);
-            if (string.IsNullOrEmpty(dumperExe))
-                return false;
-
-            var workDir = Path.GetDirectoryName(dumperExe);
-            offsetsPath = Path.Combine(workDir, "offsets.json");
-
-            status?.Invoke("Running local roblox-dumper (--no-bridge)...");
-            try
+            var nested = new Dictionary<string, Dictionary<string, int>>(StringComparer.Ordinal);
+            foreach (var rawLine in text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                var psi = new ProcessStartInfo
+                var line = rawLine.Trim();
+                if (string.IsNullOrEmpty(line))
+                    continue;
+
+                var match = ImtheoTxtLine.Match(line);
+                if (!match.Success)
+                    continue;
+
+                var ns = match.Groups[1].Value;
+                var key = match.Groups[2].Value;
+                var value = Convert.ToInt32(match.Groups[3].Value.Substring(2), 16);
+
+                Dictionary<string, int> section;
+                if (!nested.TryGetValue(ns, out section))
                 {
-                    FileName = dumperExe,
-                    Arguments = "--no-bridge",
-                    WorkingDirectory = workDir,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                };
-
-                using (var process = Process.Start(psi))
-                {
-                    if (process == null)
-                        return false;
-
-                    if (!process.WaitForExit(600000))
-                    {
-                        try
-                        {
-                            process.Kill();
-                        }
-                        catch
-                        {
-                            // Ignore kill failures.
-                        }
-
-                        return false;
-                    }
-
-                    return process.ExitCode == 0 && File.Exists(offsetsPath);
+                    section = new Dictionary<string, int>(StringComparer.Ordinal);
+                    nested[ns] = section;
                 }
+
+                section[key] = value;
             }
-            catch
+
+            if (nested.Count == 0)
+                throw new InvalidDataException("offsets.txt contained no parseable offsets.");
+
+            return new OffsetPayload
             {
-                return false;
-            }
-        }
-
-        static string FindDumperExecutable(LoaderSettings settings)
-        {
-            var candidates = new List<string>();
-
-            var envDumper = Environment.GetEnvironmentVariable("ROBLOX_DUMPER_EXE");
-            if (!string.IsNullOrWhiteSpace(envDumper))
-                candidates.Add(envDumper.Trim());
-
-            if (!string.IsNullOrWhiteSpace(settings?.DumperPath))
-                candidates.Add(settings.DumperPath.Trim());
-
-            if (!string.IsNullOrWhiteSpace(settings?.SourcePath))
-            {
-                var source = settings.SourcePath.Trim();
-                candidates.Add(Path.Combine(source, "roblox-dumper", "build-win32", "Release", "roblox-dumper.exe"));
-                candidates.Add(Path.Combine(source, "roblox-dumper", "build", "Release", "roblox-dumper.exe"));
-                candidates.Add(Path.Combine(source, "roblox-dumper", "roblox-dumper.exe"));
-            }
-
-            var repoRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", ".."));
-            candidates.Add(Path.Combine(repoRoot, "roblox-dumper", "build-win32", "Release", "roblox-dumper.exe"));
-            candidates.Add(Path.Combine(repoRoot, "roblox-dumper", "build", "Release", "roblox-dumper.exe"));
-
-            foreach (var candidate in candidates)
-            {
-                if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
-                    return candidate;
-            }
-
-            return null;
+                Offsets = nested,
+                Source = sourceLabel
+            };
         }
 
         static bool IsUsableOffsets(Dictionary<string, Dictionary<string, int>> offsets)
@@ -334,6 +307,21 @@ namespace Chocola
             }
 
             return null;
+        }
+
+        static bool ValuesLookStale(string valuesPath)
+        {
+            foreach (var line in File.ReadLines(valuesPath))
+            {
+                if (line.IndexOf("task_scheduler::pointer", StringComparison.OrdinalIgnoreCase) >= 0
+                    && (line.IndexOf("878D868", StringComparison.OrdinalIgnoreCase) >= 0
+                        || line.IndexOf("878d868", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         static OffsetPayload ParseOffsetsJson(string json, string sourceLabel)
@@ -377,7 +365,7 @@ namespace Chocola
             Dictionary<string, Dictionary<string, int>> o,
             string source)
         {
-            var strict = source == "imtheo" || source == "imtheo-latest";
+            var strict = source == "imtheo" || source == "imtheo-txt-latest" || source == "imtheo-json-latest";
             var lines = new List<string>
             {
                 "$offsets = [",

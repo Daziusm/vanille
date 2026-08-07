@@ -12,6 +12,7 @@ namespace Chocola
     {
         const string PayloadResourceName = "payload.zip";
         const string VersionMarker = ".payload_version";
+        const string PayloadEpoch = "8";
 
         public static bool EnsureInstalled(string installDir, Action<string> status, out string error)
         {
@@ -74,7 +75,7 @@ namespace Chocola
                 if (Directory.Exists(staging))
                     Directory.Delete(staging, true);
 
-                File.WriteAllText(Path.Combine(installDir, VersionMarker), hash, Encoding.ASCII);
+                File.WriteAllText(Path.Combine(installDir, VersionMarker), hash + "|" + PayloadEpoch, Encoding.ASCII);
                 status?.Invoke("Payload installed.");
                 return File.Exists(Path.Combine(installDir, "vanille.exe"));
             }
@@ -130,7 +131,8 @@ namespace Chocola
             if (!File.Exists(vanille) || !File.Exists(marker))
                 return false;
 
-            return string.Equals(File.ReadAllText(marker).Trim(), hash, StringComparison.Ordinal);
+            var markerText = File.ReadAllText(marker).Trim();
+            return markerText == (hash + "|" + PayloadEpoch);
         }
 
         static string ComputeSha256(byte[] data)

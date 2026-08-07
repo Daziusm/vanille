@@ -17,7 +17,7 @@ try {
     if (-not (Test-Path "build\x64-release")) {
         cmake --preset x64-release | Out-Null
     }
-    cmake --build --preset x64-release | Out-Null
+    cmake --build --preset x64-release --config Release --clean-first | Out-Null
     Copy-Item "build\x64-release\payload.zip" "ChocolaLoader\payload.zip" -Force
 }
 finally {

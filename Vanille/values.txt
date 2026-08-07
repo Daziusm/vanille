@@ -1,6 +1,6 @@
 $offsets = [
     // version-d584fb6c717a43d9 (imtheo)
-    'task_scheduler::pointer' => '0x878D868',
+    'task_scheduler::pointer' => '0x879A6E8',
     'task_scheduler::job_start' => '0xC8',
     'task_scheduler::job_end' => '0xD0',
     'task_scheduler::job_name' => '0x18',
@@ -10,11 +10,11 @@ $offsets = [
     'task_scheduler::render_job_to_renderview' => '0x1D0',
     'task_scheduler::max_fps' => '0xB0',
     'task_scheduler::target_fps' => '0x0',
-    'datamodel::datamodel_ptr0' => '0x8A51F68',
+    'datamodel::datamodel_ptr0' => '0x8A5D748',
     'datamodel::datamodel_ptr1' => '0x1D0',
     'datamodel::place_id' => '0x190',
     'datamodel::workspace' => '0x160',
-    'visualengine::visualengine_ptr' => '0x813FA80',
+    'visualengine::visualengine_ptr' => '0x811D0A0',
     'visualengine::view_matrix' => '0x180',
     'visualengine::dimensions' => '0xAE0',
     'visualengine::render_view' => '0xBF0',

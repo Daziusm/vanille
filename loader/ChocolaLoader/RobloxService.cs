@@ -12,8 +12,7 @@ namespace Chocola
     {
         public static bool IsRobloxRunning()
         {
-            return Process.GetProcessesByName("RobloxPlayerBeta").Length > 0
-                || Process.GetProcessesByName("ProjectXPlayerBeta").Length > 0;
+            return Process.GetProcessesByName("RobloxPlayerBeta").Length > 0;
         }
 
         public static bool IsVanilleRunning()
@@ -23,15 +22,13 @@ namespace Chocola
 
         public static int? GetPrimaryPid()
         {
-            var process = Process.GetProcessesByName("RobloxPlayerBeta").FirstOrDefault()
-                ?? Process.GetProcessesByName("ProjectXPlayerBeta").FirstOrDefault();
+            var process = Process.GetProcessesByName("RobloxPlayerBeta").FirstOrDefault();
             return process?.Id;
         }
 
         public static string GetRobloxSummary()
         {
-            var process = Process.GetProcessesByName("RobloxPlayerBeta").FirstOrDefault()
-                ?? Process.GetProcessesByName("ProjectXPlayerBeta").FirstOrDefault();
+            var process = Process.GetProcessesByName("RobloxPlayerBeta").FirstOrDefault();
             if (process == null)
                 return "Roblox not running";
 
@@ -52,7 +49,7 @@ namespace Chocola
 
         static string GetClientVersionFromProcess()
         {
-            foreach (var processName in new[] { "RobloxPlayerBeta", "ProjectXPlayerBeta" })
+            foreach (var processName in new[] { "RobloxPlayerBeta" })
             {
                 var proc = Process.GetProcessesByName(processName).FirstOrDefault();
                 if (proc == null)
@@ -150,7 +147,6 @@ namespace Chocola
             var candidates = new[]
             {
                 Path.Combine(versionDir, "RobloxPlayerBeta.exe"),
-                Path.Combine(versionDir, "ProjectXPlayerBeta.exe"),
             };
 
             foreach (var candidate in candidates)
