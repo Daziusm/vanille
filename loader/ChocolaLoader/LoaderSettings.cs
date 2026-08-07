@@ -9,6 +9,9 @@ namespace Chocola
         public string SourcePath { get; set; } = DefaultSourcePath();
         public string RepoUrl { get; set; } = "https://github.com/Daziusm/vanille";
         public string Branch { get; set; } = "master";
+        public string OffsetsUrl { get; set; } = "";
+        public string OffsetsPath { get; set; } = "";
+        public string DumperPath { get; set; } = "";
 
         static string SettingsFile
         {
@@ -65,6 +68,15 @@ namespace Chocola
                     case "branch":
                         settings.Branch = value;
                         break;
+                    case "offsets_url":
+                        settings.OffsetsUrl = value;
+                        break;
+                    case "offsets_path":
+                        settings.OffsetsPath = value;
+                        break;
+                    case "dumper_path":
+                        settings.DumperPath = value;
+                        break;
                 }
             }
 
@@ -92,7 +104,10 @@ namespace Chocola
                 "install_path=" + InstallPath,
                 "source_path=" + SourcePath,
                 "repo_url=" + RepoUrl,
-                "branch=" + Branch
+                "branch=" + Branch,
+                "offsets_url=" + OffsetsUrl,
+                "offsets_path=" + OffsetsPath,
+                "dumper_path=" + DumperPath
             };
             File.WriteAllLines(SettingsFile, lines);
         }

@@ -93,7 +93,7 @@ this.Text = "Vanille";
                 return;
             }
 
-            if (!OffsetUpdater.TryRefresh(_settings.InstallPath, msg => label4.Text = msg, out error))
+            if (!OffsetUpdater.TryRefresh(_settings.InstallPath, _settings, msg => label4.Text = msg, out error))
             {
                 MessageBox.Show(error ?? "Could not update offsets.", "Vanille", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Application.Exit();
