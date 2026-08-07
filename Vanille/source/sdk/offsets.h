@@ -51,6 +51,7 @@ namespace offsets {
         OFFSET_ENTRY(datamodel, datamodel_ptr0)
         OFFSET_ENTRY(datamodel, datamodel_ptr1)
         OFFSET_ENTRY(datamodel, place_id)
+        OFFSET_ENTRY(datamodel, workspace)
     }
 
     namespace visualengine {

@@ -408,6 +408,7 @@ namespace Chocola
             yield return Pair("datamodel::datamodel_ptr0", G(o, "FakeDataModel", "Pointer", strict));
             yield return Pair("datamodel::datamodel_ptr1", G(o, "FakeDataModel", "RealDataModel", strict));
             yield return Pair("datamodel::place_id", G(o, "DataModel", "PlaceId", strict));
+            yield return Pair("datamodel::workspace", G(o, "DataModel", "Workspace", strict));
             yield return Pair("visualengine::visualengine_ptr", G(o, "VisualEngine", "Pointer", strict));
             yield return Pair("visualengine::view_matrix", G(o, "VisualEngine", "ViewMatrix", strict));
             yield return Pair("visualengine::dimensions", G(o, "VisualEngine", "Dimensions", strict));

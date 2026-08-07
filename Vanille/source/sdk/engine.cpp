@@ -190,7 +190,6 @@ namespace
             return visualengine_datamodel;
         }
 
-        std::uintptr_t datamodel = 0;
         const auto render_job = find_render_job();
         if (render_job)
         {
@@ -215,31 +214,21 @@ namespace
                 }
                 else
                 {
-                    datamodel = memory->read<std::uintptr_t>(fake_datamodel + datamodel_offset);
-                    if (!datamodel && should_log_engine_failure())
+                    const auto render_job_datamodel = memory->read<std::uintptr_t>(fake_datamodel + datamodel_offset);
+                    if (!render_job_datamodel && should_log_engine_failure())
                     {
                         logger_core::log_warning("rbx engine -> failed to read real datamodel ptr @ 0x{:X}", fake_datamodel + datamodel_offset);
                     }
-                }
 
-                if (is_likely_datamodel(datamodel))
-                {
-                    return datamodel;
+                    if (is_likely_datamodel(render_job_datamodel))
+                    {
+                        return render_job_datamodel;
+                    }
                 }
             }
         }
 
-        if (is_likely_datamodel(static_datamodel))
-        {
-            return static_datamodel;
-        }
-
-        if (is_likely_datamodel(visualengine_datamodel))
-        {
-            return visualengine_datamodel;
-        }
-
-        return datamodel ? datamodel : (static_datamodel ? static_datamodel : visualengine_datamodel);
+        return 0;
     }
 
     std::uintptr_t find_renderview_address()

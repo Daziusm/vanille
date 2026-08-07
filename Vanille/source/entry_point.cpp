@@ -31,7 +31,56 @@ namespace
     std::atomic<bool> tests_loop_running{ false };
     std::thread tests_loop_thread;
     std::uintptr_t last_datamodel_address = 0;
-    std::int64_t last_place_id = 0;
+    std::uintptr_t last_place_id = 0;
+
+    rbx::instance_t find_child_by_class(const rbx::instance_t& parent, std::string_view class_name)
+    {
+        if (!parent.is_valid())
+        {
+            return {};
+        }
+
+        const auto direct = parent.find_first_child_by_class(class_name);
+        if (direct.is_valid())
+        {
+            return direct;
+        }
+
+        for (const auto& child : parent.get_children())
+        {
+            if (child.get_class_name() == class_name)
+            {
+                return child;
+            }
+        }
+
+        return {};
+    }
+
+    rbx::instance_t read_datamodel_child(
+        const rbx::instance_t& datamodel,
+        std::uintptr_t offset,
+        std::string_view class_name)
+    {
+        if (!datamodel.is_valid() || !offset)
+        {
+            return {};
+        }
+
+        const auto child_ptr = memory->read<std::uintptr_t>(datamodel.get_address() + offset);
+        if (!child_ptr)
+        {
+            return {};
+        }
+
+        const rbx::instance_t child(child_ptr);
+        if (child.get_class_name() == class_name)
+        {
+            return child;
+        }
+
+        return {};
+    }
 
     bool sync_globals()
     {
@@ -44,10 +93,17 @@ namespace
 
         globals->visualengine = rbx::instance_t(rbx::engine->get_visualengine());
         globals->renderview = rbx::engine->get_renderview();
-        globals->players = globals->datamodel.find_first_child_by_class("Players");
-        globals->workspace = globals->datamodel.find_first_child_by_class("Workspace");
-        globals->lighting = globals->datamodel.find_first_child_by_class("Lighting");
-        globals->mouse_service = globals->datamodel.find_first_child_by_class("MouseService");
+        globals->players = find_child_by_class(globals->datamodel, "Players");
+        globals->workspace = find_child_by_class(globals->datamodel, "Workspace");
+        if (!globals->workspace.is_valid())
+        {
+            globals->workspace = read_datamodel_child(
+                globals->datamodel,
+                roblox::offsets::datamodel::workspace,
+                "Workspace");
+        }
+        globals->lighting = find_child_by_class(globals->datamodel, "Lighting");
+        globals->mouse_service = find_child_by_class(globals->datamodel, "MouseService");
         globals->text_chat_service = globals->datamodel.find_first_child("TextChatService");
         globals->user_input_service = globals->datamodel.find_first_child("UserInputService");
         globals->chat_input_bar_configuration = {};
