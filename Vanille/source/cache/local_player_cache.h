@@ -20,6 +20,9 @@ namespace cache
         std::string display_name;
         std::uint64_t user_id = 0;
         std::uintptr_t team = 0;
+        bool pf_enemy = false;
+        bool pf_enemy_known = false;
+        bool has_team_billboard = false;
         rbx::instance_t player;
         rbx::instance_t character;
         rbx::instance_t revolver;

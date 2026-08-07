@@ -1,5 +1,5 @@
 #include "../widgets.h"
-#include "../../colors/colors.h"
+#include "../../colors/colors_new.h"
 #include <imgui/imgui_internal.h>
 
 namespace
@@ -94,19 +94,11 @@ bool c_widgets::input_text(const char* label, char* buffer, size_t buffer_size, 
         return col;
     };
 
-    ImVec4 fill_top = adjust_base(c_colors::top_child_background);
-    ImVec4 fill_bottom = adjust_base(c_colors::bottom_child_background);
+    ImVec4 fill_color = adjust_base(c_colors::top_child_background);
 
     draw_list->AddRect(outer.Min, outer.Max, ImGui::GetColorU32(c_colors::outter_border), 0.0f, 0, kBorderThickness);
     draw_list->AddRect(inner.Min, inner.Max, ImGui::GetColorU32(c_colors::main_border), 0.0f, 0, kBorderThickness);
-    draw_list->AddRectFilledMultiColor(
-        fill.Min,
-        fill.Max,
-        ImGui::GetColorU32(fill_bottom),
-        ImGui::GetColorU32(fill_bottom),
-        ImGui::GetColorU32(fill_top),
-        ImGui::GetColorU32(fill_top)
-    );
+    draw_list->AddRectFilled(fill.Min, fill.Max, ImGui::GetColorU32(fill_color));
 
     splitter.Merge(draw_list);
 

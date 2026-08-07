@@ -138,6 +138,7 @@ namespace Chocola
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
 
+            yield return Path.Combine(localAppData, "Fishstrap", "Versions");
             yield return Path.Combine(localAppData, "Roblox", "Versions");
             yield return Path.Combine(programFilesX86, "Roblox", "Versions");
         }

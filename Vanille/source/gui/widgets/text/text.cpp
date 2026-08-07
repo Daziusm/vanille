@@ -1,6 +1,5 @@
 #include "../widgets.h"
-#include "../../colors/colors.h"
-#include "../../globals/globals.h"
+#include "globals/globals_fixed.h"
 #include <imgui/imgui_internal.h>
 #include <cstdarg>
 #include <cctype>

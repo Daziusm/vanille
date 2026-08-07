@@ -1,5 +1,5 @@
 #include "../widgets.h"
-#include "../../colors/colors.h"
+#include "../../colors/colors_new.h"
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <cfloat>
@@ -168,9 +168,8 @@ bool c_widgets::colorpicker(const char* label, ImVec4& color, float target_heigh
         const ImVec2 popup_pos = ImGui::GetWindowPos();
         const ImVec2 popup_size = ImGui::GetWindowSize();
         const ImVec2 popup_max = ImVec2(popup_pos.x + popup_size.x, popup_pos.y + popup_size.y);
-        const ImU32 top_bg = ImGui::GetColorU32(c_colors::top_child_background);
-        const ImU32 bottom_bg = ImGui::GetColorU32(c_colors::bottom_child_background);
-        popup_draw_list->AddRectFilledMultiColor(popup_pos, popup_max, bottom_bg, bottom_bg, top_bg, top_bg);
+        const ImU32 panel_bg = ImGui::GetColorU32(c_colors::top_child_background);
+        popup_draw_list->AddRectFilled(popup_pos, popup_max, panel_bg);
         popup_draw_list->AddRect(popup_pos, popup_max, ImGui::GetColorU32(c_colors::outter_border), 0.0f, 0, kBorderThickness);
 
         ImRect popup_inner(
@@ -312,9 +311,8 @@ bool c_widgets::colorpicker_dual(const char* label, ImVec4& color_a, ImVec4& col
                 const ImVec2 popup_pos = ImGui::GetWindowPos();
                 const ImVec2 popup_size = ImGui::GetWindowSize();
                 const ImVec2 popup_max = ImVec2(popup_pos.x + popup_size.x, popup_pos.y + popup_size.y);
-                const ImU32 top_bg = ImGui::GetColorU32(c_colors::top_child_background);
-                const ImU32 bottom_bg = ImGui::GetColorU32(c_colors::bottom_child_background);
-                popup_draw_list->AddRectFilledMultiColor(popup_pos, popup_max, bottom_bg, bottom_bg, top_bg, top_bg);
+                const ImU32 panel_bg = ImGui::GetColorU32(c_colors::top_child_background);
+                popup_draw_list->AddRectFilled(popup_pos, popup_max, panel_bg);
                 popup_draw_list->AddRect(popup_pos, popup_max, ImGui::GetColorU32(c_colors::outter_border), 0.0f, 0, kBorderThickness);
 
                 ImRect popup_inner(

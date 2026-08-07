@@ -1,4 +1,5 @@
-#include "utils/logger.h"
+﻿#include "utils/logger.h"
+#include "utils/debug_diag.h"
 #include "globals/globals.h"
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
@@ -31,56 +32,7 @@ namespace
     std::atomic<bool> tests_loop_running{ false };
     std::thread tests_loop_thread;
     std::uintptr_t last_datamodel_address = 0;
-    std::uintptr_t last_place_id = 0;
-
-    rbx::instance_t find_child_by_class(const rbx::instance_t& parent, std::string_view class_name)
-    {
-        if (!parent.is_valid())
-        {
-            return {};
-        }
-
-        const auto direct = parent.find_first_child_by_class(class_name);
-        if (direct.is_valid())
-        {
-            return direct;
-        }
-
-        for (const auto& child : parent.get_children())
-        {
-            if (child.get_class_name() == class_name)
-            {
-                return child;
-            }
-        }
-
-        return {};
-    }
-
-    rbx::instance_t read_datamodel_child(
-        const rbx::instance_t& datamodel,
-        std::uintptr_t offset,
-        std::string_view class_name)
-    {
-        if (!datamodel.is_valid() || !offset)
-        {
-            return {};
-        }
-
-        const auto child_ptr = memory->read<std::uintptr_t>(datamodel.get_address() + offset);
-        if (!child_ptr)
-        {
-            return {};
-        }
-
-        const rbx::instance_t child(child_ptr);
-        if (child.get_class_name() == class_name)
-        {
-            return child;
-        }
-
-        return {};
-    }
+    std::int64_t last_place_id = 0;
 
     bool sync_globals()
     {
@@ -88,22 +40,18 @@ namespace
         if (!globals->datamodel.is_valid())
         {
             logger_core::log_warning("sync_globals -> datamodel invalid");
+            debug_diag::engine_report report{};
+            report.engine_ready = rbx::engine->get_datamodel().is_valid();
+            debug_diag::report_engine(report);
             return false;
         }
 
         globals->visualengine = rbx::instance_t(rbx::engine->get_visualengine());
         globals->renderview = rbx::engine->get_renderview();
-        globals->players = find_child_by_class(globals->datamodel, "Players");
-        globals->workspace = find_child_by_class(globals->datamodel, "Workspace");
-        if (!globals->workspace.is_valid())
-        {
-            globals->workspace = read_datamodel_child(
-                globals->datamodel,
-                roblox::offsets::datamodel::workspace,
-                "Workspace");
-        }
-        globals->lighting = find_child_by_class(globals->datamodel, "Lighting");
-        globals->mouse_service = find_child_by_class(globals->datamodel, "MouseService");
+        globals->players = globals->datamodel.find_first_child_by_class("Players");
+        globals->workspace = globals->datamodel.find_first_child_by_class("Workspace");
+        globals->lighting = globals->datamodel.find_first_child_by_class("Lighting");
+        globals->mouse_service = globals->datamodel.find_first_child_by_class("MouseService");
         globals->text_chat_service = globals->datamodel.find_first_child("TextChatService");
         globals->user_input_service = globals->datamodel.find_first_child("UserInputService");
         globals->chat_input_bar_configuration = {};
@@ -121,8 +69,34 @@ namespace
                 globals->workspace.get_address(),
                 globals->lighting.get_address(),
                 globals->mouse_service.get_address());
+
+            debug_diag::engine_report report{};
+            report.engine_ready = rbx::engine->get_datamodel().is_valid();
+            report.datamodel_valid = globals->datamodel.is_valid();
+            report.players_valid = globals->players.is_valid();
+            report.workspace_valid = globals->workspace.is_valid();
+            report.visualengine_valid = globals->visualengine.is_valid();
+            report.datamodel = globals->datamodel.get_address();
+            report.players = globals->players.get_address();
+            report.workspace = globals->workspace.get_address();
+            report.visualengine = globals->visualengine.get_address();
+            report.place_id = globals->game_id;
+            debug_diag::report_engine(report);
             return false;
         }
+
+        debug_diag::engine_report report{};
+        report.engine_ready = rbx::engine->get_datamodel().is_valid();
+        report.datamodel_valid = true;
+        report.players_valid = true;
+        report.workspace_valid = true;
+        report.visualengine_valid = globals->visualengine.is_valid();
+        report.datamodel = globals->datamodel.get_address();
+        report.players = globals->players.get_address();
+        report.workspace = globals->workspace.get_address();
+        report.visualengine = globals->visualengine.get_address();
+        report.place_id = globals->game_id;
+        debug_diag::report_engine(report);
 
         return true;
     }
@@ -291,8 +265,7 @@ int entry_point()
     }
     vanille::overlay::g_rbx_window = roblox_window;
 
-    const bool engine_ready = rbx::engine->initialize();
-    if (engine_ready)
+    if (rbx::engine->initialize())
     {
         if (sync_globals())
         {
@@ -303,24 +276,26 @@ int entry_point()
         {
             logger_core::log_warning("failed to populate globals after engine init");
         }
+
+        cache::localplayer->start();
+        cache::players_cache->start();
+        cache::dead_bodies_cache->start();
+        hacks::apply();
+        std::thread([] { globals->mouse_service.cache_input_object(); }).detach();
+        aimbot::start();
+        free_aim::start();
+        pf_silent::start();
+        triggerbot::start();
+        shooter::start();
+        start_tp_watch();
+        start_tests_loop();
     }
     else
     {
-        logger_core::log_warning("rbx engine datamodel not ready at startup - player caches will keep retrying");
+        logger_core::log_warning("rbx engine initialization failed - offsets likely invalid");
+        debug_diag::engine_report report{};
+        debug_diag::report_engine(report);
     }
-
-    cache::localplayer->start();
-    cache::players_cache->start();
-    cache::dead_bodies_cache->start();
-    hacks::apply();
-    std::thread([] { globals->mouse_service.cache_input_object(); }).detach();
-    aimbot::start();
-    free_aim::start();
-    pf_silent::start();
-    triggerbot::start();
-    shooter::start();
-    start_tp_watch();
-    start_tests_loop();
 
     vanille::overlay::run_overlay();
     stop_tests_loop();

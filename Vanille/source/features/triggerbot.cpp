@@ -1,4 +1,4 @@
-#include "features/triggerbot.h"
+﻿#include "features/triggerbot.h"
 
 #include <atomic>
 #include <algorithm>

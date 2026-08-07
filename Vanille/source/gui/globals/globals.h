@@ -20,7 +20,7 @@ namespace c_fonts
     inline float verdana_regular_size = 14.0f;
 
     inline ImFont* verdana_bold = nullptr;
-    inline float verdana_bold_size = 15.0f;
+    inline float verdana_bold_size = 16.0f;
 
     inline ImFont* ui_title = nullptr;
     inline float ui_title_size = 22.0f;
@@ -29,10 +29,10 @@ namespace c_fonts
     inline float ui_section_size = 11.0f;
 
     inline ImFont* ui_tab = nullptr;
-    inline float ui_tab_size = 12.0f;
+    inline float ui_tab_size = 13.0f;
 
     inline ImFont* ui_tab_bold = nullptr;
-    inline float ui_tab_bold_size = 12.0f;
+    inline float ui_tab_bold_size = 13.0f;
 
     inline ImFont* pixel7 = nullptr;
     inline float pixel7_size = 16.0f;
@@ -45,6 +45,21 @@ namespace c_fonts
 
     inline ImFont* proggy_tiny = nullptr;
     inline float proggy_tiny_size = 10.0f;
+
+    inline ImFont* media_regular = nullptr;
+    inline float media_regular_size = 15.0f;
+
+    inline ImFont* media_bold = nullptr;
+    inline float media_bold_size = 15.0f;
+
+    inline ImFont* media_lyrics_active = nullptr;
+    inline float media_lyrics_active_size = 26.0f;
+
+    inline ImFont* media_lyrics_inactive = nullptr;
+    inline float media_lyrics_inactive_size = 19.0f;
+
+    inline ImFont* media_caption = nullptr;
+    inline float media_caption_size = 12.0f;
 }
 
 namespace c_textures

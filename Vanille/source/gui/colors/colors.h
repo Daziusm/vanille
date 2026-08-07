@@ -33,18 +33,28 @@ namespace c_colors
         return bottom_color;
     }
 
-    // Bloom design tokens (vanille/uitest/bloom/tokens.css)
-    inline ImVec4 top_window_background    = ImVec4(21.0f / 255.0f, 21.0f / 255.0f, 21.0f / 255.0f, 1.0f); // #151515
-    inline ImVec4 bottom_window_background = ImVec4(31.0f / 255.0f, 31.0f / 255.0f, 31.0f / 255.0f, 1.0f); // #1f1f1f
+    inline ImVec4 derive_bottom_surface(const ImVec4& top_color, float amount = 0.012f)
+    {
+        ImVec4 bottom;
+        bottom.x = clamp01(top_color.x - amount);
+        bottom.y = clamp01(top_color.y - amount);
+        bottom.z = clamp01(top_color.z - amount);
+        bottom.w = top_color.w;
+        return bottom;
+    }
 
-    inline ImVec4 top_child_background    = ImVec4(31.0f / 255.0f, 31.0f / 255.0f, 31.0f / 255.0f, 1.0f); // #1f1f1f
-    inline ImVec4 bottom_child_background = ImVec4(22.0f / 255.0f, 22.0f / 255.0f, 22.0f / 255.0f, 1.0f); // #161616
+    // Bloom design tokens (vanille/uitest/bloom/tokens.css)
+    inline ImVec4 top_window_background    = ImVec4(24.0f / 255.0f, 24.0f / 255.0f, 24.0f / 255.0f, 1.0f); // #181818
+    inline ImVec4 bottom_window_background = derive_bottom_surface(top_window_background, 0.010f);
+
+    inline ImVec4 top_child_background    = ImVec4(30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f, 1.0f); // #1e1e1e
+    inline ImVec4 bottom_child_background = derive_bottom_surface(top_child_background, 0.012f);
 
     inline ImVec4 outter_border           = ImVec4(4.0f / 255.0f, 4.0f / 255.0f, 4.0f / 255.0f, 1.0f);   // #040404
     inline ImVec4 main_border             = ImVec4(38.0f / 255.0f, 38.0f / 255.0f, 38.0f / 255.0f, 1.0f); // #262626
 
-    inline ImVec4 surface                 = ImVec4(27.0f / 255.0f, 27.0f / 255.0f, 27.0f / 255.0f, 1.0f); // #1b1b1b
-    inline ImVec4 surface_inset           = ImVec4(22.0f / 255.0f, 22.0f / 255.0f, 22.0f / 255.0f, 1.0f); // #161616
+    inline ImVec4 surface                 = ImVec4(28.0f / 255.0f, 28.0f / 255.0f, 28.0f / 255.0f, 1.0f); // #1c1c1c
+    inline ImVec4 surface_inset           = ImVec4(26.0f / 255.0f, 26.0f / 255.0f, 26.0f / 255.0f, 1.0f); // #1a1a1a
     inline ImVec4 surface_raised          = ImVec4(34.0f / 255.0f, 34.0f / 255.0f, 34.0f / 255.0f, 1.0f); // #222222
 
     inline ImVec4 border_soft             = ImVec4(48.0f / 255.0f, 48.0f / 255.0f, 48.0f / 255.0f, 1.0f); // #303030
@@ -80,8 +90,25 @@ namespace c_colors
             return;
         }
 
-        const float mid_y = (min.y + max.y) * 0.5f;
-        draw_list->AddRectFilled(min, ImVec2(max.x, mid_y + 0.5f), top_col, rounding, ImDrawFlags_RoundCornersTop);
-        draw_list->AddRectFilled(ImVec2(min.x, mid_y - 0.5f), max, bottom_col, rounding, ImDrawFlags_RoundCornersBottom);
+        constexpr int bands = 10;
+        const ImVec4 top_rgba = ImGui::ColorConvertU32ToFloat4(top_col);
+        const ImVec4 bottom_rgba = ImGui::ColorConvertU32ToFloat4(bottom_col);
+
+        for (int i = 0; i < bands; ++i)
+        {
+            const float t0 = static_cast<float>(i) / static_cast<float>(bands);
+            const float t1 = static_cast<float>(i + 1) / static_cast<float>(bands);
+            const ImU32 band_col = ImGui::GetColorU32(ImLerp(top_rgba, bottom_rgba, (t0 + t1) * 0.5f));
+
+            ImDrawFlags round_flags = 0;
+            if (i == 0)
+                round_flags |= ImDrawFlags_RoundCornersTop;
+            if (i == bands - 1)
+                round_flags |= ImDrawFlags_RoundCornersBottom;
+
+            const ImVec2 band_min(min.x, min.y + height * t0);
+            const ImVec2 band_max(max.x, min.y + height * t1);
+            draw_list->AddRectFilled(band_min, band_max, band_col, rounding, round_flags);
+        }
     }
 }

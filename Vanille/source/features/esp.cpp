@@ -1,4 +1,4 @@
-#include "features/esp.h"
+﻿#include "features/esp.h"
 
 #include <algorithm>
 #include <array>
@@ -29,10 +29,11 @@
 
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
+#include "cache/team_utils.h"
 #include "cache/dead_body_cache.h"
 #include "utils/logger.h"
-#include "globals/globals.h"
-#include "gui/colors/colors.h"
+#include "utils/debug_diag.h"
+#include "globals/globals_fixed.h"
 #include "gui/resources/fonts.h"
 #include "sdk/camera.h"
 #include "sdk/engine.h"
@@ -1085,32 +1086,12 @@ namespace
 
     static bool is_friendly_by_team(const cache::player_state& local, const cache::player_state& other)
     {
-        if (local.address == 0 || other.address == 0 || other.address == local.address)
-        {
-            return false;
-        }
-
-        if (globals->game_id == lostfront_place_id)
-        {
-            return other.has_team_billboard;
-        }
-
-        return local.team != 0 && other.team != 0 && local.team == other.team;
+        return cache::team_utils::is_teammate(local, other);
     }
 
     static bool is_friendly_by_team(const cache::local_player_state& local, const cache::player_state& other)
     {
-        if (local.address == 0 || other.address == 0 || other.address == local.address)
-        {
-            return false;
-        }
-
-        if (globals->game_id == lostfront_place_id)
-        {
-            return other.has_team_billboard;
-        }
-
-        return local.team != 0 && other.team != 0 && local.team == other.team;
+        return cache::team_utils::is_teammate(local, other);
     }
 
     static player_relation determine_relation(const cache::player_state& local, const cache::player_state& other)
@@ -5939,6 +5920,23 @@ namespace esp
 {
     void render_esp()
     {
+        debug_diag::esp_frame_report diag{};
+        diag.esp_enabled = features->enable_esp;
+        diag.bbox_enabled = features->enable_bounding_box;
+        diag.name_enabled = features->enable_name_esp;
+        diag.skeleton_enabled = features->enable_skeleton;
+        diag.highlight_enabled = features->enable_highlight;
+        diag.datamodel = globals ? globals->datamodel.get_address() : 0;
+        diag.players_service = globals ? globals->players.get_address() : 0;
+        diag.workspace = globals ? globals->workspace.get_address() : 0;
+        diag.visualengine = globals ? globals->visualengine.get_address() : 0;
+
+        const auto publish_diag = [&](const char* phase)
+        {
+            diag.phase = phase;
+            debug_diag::report_esp_frame(diag);
+        };
+
         struct outline_guard
         {
             bool previous = ImGui::IsTextOutlineEnabled();
@@ -5974,14 +5972,17 @@ namespace esp
         } lock_death_draw{ &lock_death_alpha };
 
         auto draw = ImGui::GetBackgroundDrawList();
+        diag.draw_list_ok = draw != nullptr;
         if (!draw)
         {
+            publish_diag("no_draw_list");
             return;
         }
 
         const bool draw_desync_marker = features->desync_marker_active;
         const bool draw_visibility_debug_primitives_flag = features->show_visibility_debug_primitives;
         const bool esp_enabled = features->enable_esp;
+        diag.esp_enabled = esp_enabled;
         if (!draw_desync_marker)
         {
             clear_desync_highlight_snapshot();
@@ -5992,6 +5993,7 @@ namespace esp
         if (!esp_enabled && !draw_desync_marker && !draw_visibility_debug_primitives_flag && !needs_lock_death_update)
         {
             clear_grenade_tracking_state();
+            publish_diag("esp_disabled");
             return;
         }
 
@@ -6040,6 +6042,7 @@ namespace esp
             };
 
         const std::size_t player_count = (players_snapshot ? players_snapshot->size() : 0u) + (has_dummy ? 1u : 0u);
+        diag.cached_players = player_count;
         const std::size_t dead_body_count = dead_bodies_snapshot ? dead_bodies_snapshot->size() : 0u;
         const int highlight_mode = std::clamp(features->highlight_mode, 0, 2);
         const int highlight_mesh_material = std::clamp(features->highlight_mesh_material, 0, 4);
@@ -6118,12 +6121,20 @@ namespace esp
             !wants_grenade_indicator)
         {
             clear_grenade_tracking_state();
+            publish_diag("no_players");
             return;
         }
 
         const auto camera_frame = read_camera_frame();
+        diag.camera_ok = camera_frame.has_value();
+        if (camera_frame)
+        {
+            diag.viewport_w = camera_frame->dimensions.x;
+            diag.viewport_h = camera_frame->dimensions.y;
+        }
         if (!camera_frame)
         {
+            publish_diag("no_camera");
             return;
         }
 
@@ -6132,8 +6143,11 @@ namespace esp
 
         if (local.address == 0)
         {
+            publish_diag("no_local_player");
             return;
         }
+
+        diag.local_ok = true;
 
         if (draw_desync_marker && !g_desync_highlight.has_snapshot)
         {
@@ -6338,6 +6352,7 @@ namespace esp
                 if (!(is_leaving && fade_alpha <= 0.001f))
                 {
                     active_player_addresses.push_back(player.address);
+                    ++diag.rendered_players;
                 }
 
                 if (is_leaving && fade_alpha <= 0.001f)
@@ -6351,6 +6366,10 @@ namespace esp
                 if (features->enable_bounding_box || features->enable_name_esp || features->enable_healthbar || features->enable_armor_bar || features->enable_distance || features->enable_body_status || features->enable_target_snapline)
                 {
                     bounds = compute_bounding_box(player, *camera_frame);
+                    if (bounds)
+                    {
+                        ++diag.players_with_bounds;
+                    }
                 }
 
                 float distance_to_local = -1.0f;
@@ -7397,6 +7416,12 @@ namespace esp
             prune_mesh_wireframe_cache(mesh_wireframe_cache, highlight_frame_id, k_hull_cache_max_age);
             prune_mesh_material_cache(mesh_material_cache, highlight_frame_id, k_hull_cache_max_age);
         }
+
+        if (draw)
+        {
+            diag.draw_primitives = static_cast<std::size_t>(draw->VtxBuffer.Size);
+        }
+        publish_diag(esp_enabled ? "rendering" : "aux_only");
     }
 
     static void draw_outlined_rectangle_on(ImDrawList* draw, const ImVec2& position, const ImVec2& size, const ImU32 color, float rounding = 0.0f)
@@ -8972,7 +8997,6 @@ namespace esp
         const ImU32 fov_color = ImGui::GetColorU32(ImVec4(c_colors::top_accent_color.x, c_colors::top_accent_color.y, c_colors::top_accent_color.z, 0.35f));
         draw_list->AddCircle(center, features->free_aim_fov_radius, fov_color, 64, 1.5f);
     }
-
 
     void render_aimbot_fov()
     {

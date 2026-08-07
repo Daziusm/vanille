@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vanille": {
+      "command": "node",
+      "args": ["D:/Vanille/mcp-server/dist/index.js"]
+    }
+  }
+}

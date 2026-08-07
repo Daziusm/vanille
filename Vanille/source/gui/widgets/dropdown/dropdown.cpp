@@ -1,5 +1,5 @@
 #include "../widgets.h"
-#include "../../colors/colors.h"
+#include "../../colors/colors_new.h"
 #include "imgui_internal.h"
 
 namespace
@@ -107,30 +107,15 @@ bool c_widgets::dropdown(const char* label, int* current_item, const char* const
     ImRect inner_bb = shrink_rect(outer_bb, kBorderThickness);
     ImRect fill_bb = shrink_rect(inner_bb, 1.0f);
 
-    ImVec4 base_top = c_colors::top_child_background;
-    ImVec4 base_bottom = c_colors::bottom_child_background;
+    ImVec4 fill_color = c_colors::top_child_background;
     if (held)
-    {
-        const float factor = 0.9f;
-        base_top = scale_color(base_top, factor);
-        base_bottom = scale_color(base_bottom, factor);
-    }
+        fill_color = scale_color(fill_color, 0.9f);
     else if (hovered)
-    {
-        const float factor = 1.15f;
-        base_top = scale_color(base_top, factor);
-        base_bottom = scale_color(base_bottom, factor);
-    }
+        fill_color = scale_color(fill_color, 1.15f);
 
     draw_list->AddRect(outer_bb.Min, outer_bb.Max, ImGui::GetColorU32(c_colors::outter_border), c_colors::widget_rounding, 0, kBorderThickness);
     draw_list->AddRect(inner_bb.Min, inner_bb.Max, ImGui::GetColorU32(c_colors::main_border), ImMax(0.0f, c_colors::widget_rounding - 1.0f), 0, kBorderThickness);
-    draw_list->AddRectFilledMultiColor(
-        fill_bb.Min,
-        fill_bb.Max,
-        ImGui::GetColorU32(base_bottom),
-        ImGui::GetColorU32(base_bottom),
-        ImGui::GetColorU32(base_top),
-        ImGui::GetColorU32(base_top));
+    draw_list->AddRectFilled(fill_bb.Min, fill_bb.Max, ImGui::GetColorU32(fill_color));
 
     const float indicator_width = frame_height * 0.9f;
     ImRect indicator_bb(ImVec2(fill_bb.Max.x - indicator_width, fill_bb.Min.y), fill_bb.Max);
@@ -161,7 +146,7 @@ bool c_widgets::dropdown(const char* label, int* current_item, const char* const
         const float fade_width = ImMin(style.FramePadding.x * 3.0f, text_bb.GetWidth() * 0.6f);
         const ImVec2 fade_min(divider_x - fade_width, fill_bb.Min.y + 1.0f);
         const ImVec2 fade_max(divider_x, fill_bb.Max.y - 1.0f);
-        ImVec4 solid_col = base_bottom;
+        ImVec4 solid_col = fill_color;
         solid_col.w = ImClamp(solid_col.w * 0.95f, 0.0f, 1.0f);
         ImVec4 transparent_col = solid_col;
         transparent_col.w = 0.0f;
@@ -195,11 +180,7 @@ bool c_widgets::dropdown(const char* label, int* current_item, const char* const
         const ImVec2 popup_size = ImGui::GetWindowSize();
         const ImVec2 popup_max = ImVec2(popup_pos.x + popup_size.x, popup_pos.y + popup_size.y);
 
-        popup_draw_list->AddRectFilledMultiColor(popup_pos, popup_max,
-            ImGui::GetColorU32(c_colors::bottom_child_background),
-            ImGui::GetColorU32(c_colors::bottom_child_background),
-            ImGui::GetColorU32(c_colors::top_child_background),
-            ImGui::GetColorU32(c_colors::top_child_background));
+        popup_draw_list->AddRectFilled(popup_pos, popup_max, ImGui::GetColorU32(c_colors::top_child_background));
         popup_draw_list->AddRect(popup_pos, popup_max, ImGui::GetColorU32(c_colors::outter_border), c_colors::widget_rounding, 0, kBorderThickness);
 
         ImRect popup_inner = shrink_rect(ImRect(popup_pos, popup_max), kBorderThickness);
@@ -322,30 +303,15 @@ bool c_widgets::multi_dropdown(const char* label, bool* selections, const char* 
     ImRect inner_bb = shrink_rect(outer_bb, kBorderThickness);
     ImRect fill_bb = shrink_rect(inner_bb, 1.0f);
 
-    ImVec4 base_top = c_colors::top_child_background;
-    ImVec4 base_bottom = c_colors::bottom_child_background;
+    ImVec4 fill_color = c_colors::top_child_background;
     if (held)
-    {
-        const float factor = 0.9f;
-        base_top = scale_color(base_top, factor);
-        base_bottom = scale_color(base_bottom, factor);
-    }
+        fill_color = scale_color(fill_color, 0.9f);
     else if (hovered)
-    {
-        const float factor = 1.15f;
-        base_top = scale_color(base_top, factor);
-        base_bottom = scale_color(base_bottom, factor);
-    }
+        fill_color = scale_color(fill_color, 1.15f);
 
     draw_list->AddRect(outer_bb.Min, outer_bb.Max, ImGui::GetColorU32(c_colors::outter_border), c_colors::widget_rounding, 0, kBorderThickness);
     draw_list->AddRect(inner_bb.Min, inner_bb.Max, ImGui::GetColorU32(c_colors::main_border), ImMax(0.0f, c_colors::widget_rounding - 1.0f), 0, kBorderThickness);
-    draw_list->AddRectFilledMultiColor(
-        fill_bb.Min,
-        fill_bb.Max,
-        ImGui::GetColorU32(base_bottom),
-        ImGui::GetColorU32(base_bottom),
-        ImGui::GetColorU32(base_top),
-        ImGui::GetColorU32(base_top));
+    draw_list->AddRectFilled(fill_bb.Min, fill_bb.Max, ImGui::GetColorU32(fill_color));
 
     const float indicator_width = frame_height * 0.9f;
     ImRect indicator_bb(ImVec2(fill_bb.Max.x - indicator_width, fill_bb.Min.y), fill_bb.Max);
@@ -407,7 +373,7 @@ bool c_widgets::multi_dropdown(const char* label, bool* selections, const char* 
         const float fade_width = ImMin(style.FramePadding.x * 3.0f, text_bb.GetWidth() * 0.6f);
         const ImVec2 fade_min(divider_x - fade_width, fill_bb.Min.y + 1.0f);
         const ImVec2 fade_max(divider_x, fill_bb.Max.y - 1.0f);
-        ImVec4 solid_col = base_bottom;
+        ImVec4 solid_col = fill_color;
         solid_col.w = ImClamp(solid_col.w * 0.95f, 0.0f, 1.0f);
         ImVec4 transparent_col = solid_col;
         transparent_col.w = 0.0f;
@@ -441,11 +407,7 @@ bool c_widgets::multi_dropdown(const char* label, bool* selections, const char* 
         const ImVec2 popup_size = ImGui::GetWindowSize();
         const ImVec2 popup_max = ImVec2(popup_pos.x + popup_size.x, popup_pos.y + popup_size.y);
 
-        popup_draw_list->AddRectFilledMultiColor(popup_pos, popup_max,
-            ImGui::GetColorU32(c_colors::bottom_child_background),
-            ImGui::GetColorU32(c_colors::bottom_child_background),
-            ImGui::GetColorU32(c_colors::top_child_background),
-            ImGui::GetColorU32(c_colors::top_child_background));
+        popup_draw_list->AddRectFilled(popup_pos, popup_max, ImGui::GetColorU32(c_colors::top_child_background));
         popup_draw_list->AddRect(popup_pos, popup_max, ImGui::GetColorU32(c_colors::outter_border), c_colors::widget_rounding, 0, kBorderThickness);
 
         ImRect popup_inner = shrink_rect(ImRect(popup_pos, popup_max), kBorderThickness);

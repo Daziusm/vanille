@@ -11,7 +11,7 @@
 #include <exception>
 
 #include "cache/player_parts.h"
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "memory/memory.h"
 #include "sdk/engine.h"
 #include "sdk/part.h"
@@ -133,6 +133,77 @@ namespace
         return root.is_valid();
     }
 
+    bool is_pf_character_model(const rbx::instance_t& model)
+    {
+        if (!model.is_valid() || !is_model_instance(model))
+        {
+            return false;
+        }
+
+        if (has_humanoid_root_part(model))
+        {
+            return true;
+        }
+
+        const auto children = get_children_safely(model, "pf_local_model");
+        for (const auto& child : children)
+        {
+            const std::string cls = child.get_class_name();
+            if (cls != "Part" && cls != "MeshPart")
+            {
+                continue;
+            }
+
+            const auto part_children = get_children_safely(child, "pf_local_model.part");
+            for (const auto& part_child : part_children)
+            {
+                if (part_child.get_class_name() == "BillboardGui")
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    rbx::instance_t find_pf_character_in_tree(const rbx::instance_t& root, int depth = 0)
+    {
+        if (!root.is_valid() || depth > 4)
+        {
+            return {};
+        }
+
+        if (is_pf_character_model(root))
+        {
+            return root;
+        }
+
+        const auto children = get_children_safely(root, "pf_local_tree");
+        for (const auto& child : children)
+        {
+            if (!child.is_valid())
+            {
+                continue;
+            }
+
+            if (is_pf_character_model(child))
+            {
+                return child;
+            }
+
+            if (child.get_class_name() == "Folder" || child.get_class_name() == "Model")
+            {
+                if (const auto nested = find_pf_character_in_tree(child, depth + 1); nested.is_valid())
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return {};
+    }
+
     rbx::instance_t resolve_pf_local_model()
     {
         static std::uintptr_t cached_model_address = 0;
@@ -167,28 +238,41 @@ namespace
         if (cached_model_address != 0 && (now - last_refresh) < k_refresh_interval)
         {
             const rbx::instance_t cached(cached_model_address);
-            if (has_humanoid_root_part(cached))
+            if (is_pf_character_model(cached))
             {
                 globals->pf_local_player_model = cached;
                 return cached;
             }
         }
 
-        rbx::instance_t found = ignore.find_first_child_by_class("Model");
-        if (!has_humanoid_root_part(found))
+        rbx::instance_t found = find_pf_character_in_tree(ignore);
+        if (!found.is_valid())
         {
-            const auto children = get_children_safely(ignore, "pf_local_ignore");
-            for (const auto& child : children)
+            found = ignore.find_first_child_by_class("Model");
+            if (!is_pf_character_model(found))
             {
-                if (has_humanoid_root_part(child))
+                const auto children = get_children_safely(ignore, "pf_local_ignore");
+                for (const auto& child : children)
                 {
-                    found = child;
-                    break;
+                    if (is_pf_character_model(child))
+                    {
+                        found = child;
+                        break;
+                    }
+
+                    if (child.get_class_name() == "Folder")
+                    {
+                        if (const auto nested = find_pf_character_in_tree(child); nested.is_valid())
+                        {
+                            found = nested;
+                            break;
+                        }
+                    }
                 }
             }
         }
 
-        if (has_humanoid_root_part(found))
+        if (is_pf_character_model(found))
         {
             cached_model_address = found.get_address();
             last_refresh = now;
@@ -288,7 +372,7 @@ namespace
         if (globals->game_id == k_phantom_forces_place_id)
         {
             const auto cached_pf_model = globals->pf_local_player_model;
-            if (has_humanoid_root_part(cached_pf_model))
+            if (is_pf_character_model(cached_pf_model))
             {
                 return cached_pf_model;
             }
@@ -724,6 +808,38 @@ namespace cache
 
         last_player_address = next_state.address;
         last_character_address = next_state.character.get_address();
+
+        if (globals->game_id == k_phantom_forces_place_id)
+        {
+            next_state.pf_enemy = false;
+            next_state.pf_enemy_known = true;
+
+            if (const auto players_snapshot = players_cache->snapshot())
+            {
+                for (const auto& player : *players_snapshot)
+                {
+                    const bool same_user = next_state.user_id != 0 && player.user_id == next_state.user_id;
+                    const bool same_character = next_state.character.is_valid()
+                        && player.character.is_valid()
+                        && player.character.get_address() == next_state.character.get_address();
+                    if (!same_user && !same_character)
+                    {
+                        continue;
+                    }
+
+                    if (player.team != 0)
+                    {
+                        next_state.team = player.team;
+                    }
+                    if (player.pf_enemy_known)
+                    {
+                        next_state.pf_enemy = player.pf_enemy;
+                        next_state.pf_enemy_known = true;
+                    }
+                    break;
+                }
+            }
+        }
 
         std::scoped_lock lock(mutex);
         state = std::move(next_state);

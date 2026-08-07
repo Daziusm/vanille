@@ -1,22 +1,25 @@
 #include "utils/console.h"
 
 #include <cwchar>
+#include <cstdio>
 #include <windows.h>
 
 namespace console_core
 {
     void console_service::initialize()
     {
-        if (!GetConsoleWindow())
+#ifdef VANILLE_ENABLE_CONSOLE
+        if (AllocConsole())
         {
-            AllocConsole();
-
-            FILE* stream = nullptr;
-            freopen_s(&stream, "CONOUT$", "w", stdout);
-            freopen_s(&stream, "CONOUT$", "w", stderr);
-            freopen_s(&stream, "CONIN$", "r", stdin);
-            SetConsoleTitleW(L"Vanille");
+            SetConsoleTitleW(L"Vanille Debug");
+            FILE* stdout_stream = nullptr;
+            FILE* stderr_stream = nullptr;
+            FILE* stdin_stream = nullptr;
+            freopen_s(&stdout_stream, "CONOUT$", "w", stdout);
+            freopen_s(&stderr_stream, "CONOUT$", "w", stderr);
+            freopen_s(&stdin_stream, "CONIN$", "r", stdin);
         }
+#endif
 
         const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
         if (output == INVALID_HANDLE_VALUE)

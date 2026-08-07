@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../widgets/widgets.h"
-#include "../../globals/globals.h"
+#include "../../globals/globals_fixed.h"
 #include <imgui.h>
 
 namespace menu

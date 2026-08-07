@@ -1,4 +1,4 @@
-#include "auth.h"
+﻿#include "auth.h"
 
 #include <Windows.h>
 #include <sdk/offsets.h>
@@ -174,6 +174,11 @@ bool LoadOffsets()
     {
         std::cerr << "[vanille] failed to apply offsets from " << values_path.string() << "\n";
         return false;
+    }
+
+    if (!roblox::offsets::rbx_string::length)
+    {
+        roblox::offsets::rbx_string::length = 0x10;
     }
 
     std::cout << "[vanille] loaded offsets from " << values_path.string() << "\n";

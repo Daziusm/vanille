@@ -10,7 +10,7 @@
 #include <Windows.h>
 
 #include "cache/local_player_cache.h"
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "gui/overlay.hpp"
 #include "cache/player_parts.h"
 #include "cache/player_cache.h"

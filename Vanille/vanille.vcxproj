@@ -46,10 +46,11 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;VANILLE_ENABLE_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)source\;$(ProjectDir)extern\;$(ProjectDir)extern\resources\;$(ProjectDir)extern\imgui;$(ProjectDir)extern\freetype\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)source_include_shim\;$(ProjectDir)source\;$(ProjectDir)extern\;$(ProjectDir)extern\resources\;$(ProjectDir)extern\imgui;$(ProjectDir)extern\freetype\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdclatest</LanguageStandard_C>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -78,8 +79,11 @@ if exist "$(ProjectDir)third_party\lua\lua53-64.dll" copy /Y "$(ProjectDir)third
     <ClCompile Include="extern\text_editor\TextEditor.cpp" />
     <ClCompile Include="extern\resources\fonts\logo.c" />
     <ClCompile Include="extern\resources\fonts\splash_sprite.c" />
+    <ClCompile Include="source\mcp\mcp_bridge.cpp" />
+    <ClCompile Include="source\explorer\explorer_service.cpp" />
     <ClCompile Include="source\cache\dead_body_cache.cpp" />
     <ClCompile Include="source\cache\local_player_cache.cpp" />
+    <ClCompile Include="source\cache\team_utils.cpp" />
     <ClCompile Include="source\cache\player_cache.cpp" />
     <ClCompile Include="source\configs\config_manager.cpp" />
     <ClCompile Include="source\lua\datamodel.cpp" />
@@ -106,17 +110,25 @@ if exist "$(ProjectDir)third_party\lua\lua53-64.dll" copy /Y "$(ProjectDir)third
     <ClCompile Include="source\features\hacks.cpp" />
     <ClCompile Include="source\features\lighting.cpp" />
     <ClCompile Include="source\features\visibility.cpp" />
-    <ClCompile Include="source\features\triggerbot.cpp" />
+    <ClCompile Include="source\features\triggerbot.build.cpp">
+      <ObjectFileName>$(IntDir)triggerbot.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="source\features\shooter.cpp" />
-    <ClCompile Include="source\features\tests.cpp" />
+    <ClCompile Include="source\features\tests.build.cpp">
+      <ObjectFileName>$(IntDir)tests.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="source\utils\tinygltf_stb.cpp" />
     <ClCompile Include="extern\clipper2\src\clipper.engine.cpp" />
     <ClCompile Include="extern\clipper2\src\clipper.offset.cpp" />
     <ClCompile Include="extern\clipper2\src\clipper.rectclip.cpp" />
     <ClCompile Include="source\gui\imgui_initialize.cpp" />
     <ClCompile Include="source\gui\menu\menu.cpp" />
-    <ClCompile Include="source\gui\overlay.cpp" />
-    <ClCompile Include="source\gui\assistant.cpp" />
+    <ClCompile Include="source\gui\overlay.build.cpp">
+      <ObjectFileName>$(IntDir)overlay.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="source\gui\assistant.build.cpp">
+      <ObjectFileName>$(IntDir)assistant.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="source\gui\media_session.cpp" />
     <ClCompile Include="source\gui\widgets\button\button.cpp" />
     <ClCompile Include="source\gui\widgets\checkbox\checkbox.cpp" />
@@ -124,17 +136,22 @@ if exist "$(ProjectDir)third_party\lua\lua53-64.dll" copy /Y "$(ProjectDir)third
     <ClCompile Include="source\gui\widgets\colorpicker\colorpicker.cpp" />
     <ClCompile Include="source\gui\widgets\dropdown\dropdown.cpp" />
     <ClCompile Include="source\gui\widgets\input\input.cpp" />
-    <ClCompile Include="source\gui\widgets\keybind\keybind.cpp" />
+    <ClCompile Include="source\gui\widgets\keybind\keybind.build.cpp">
+      <ObjectFileName>$(IntDir)keybind.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="source\gui\widgets\slider\slider.cpp" />
     <ClCompile Include="source\gui\widgets\text\text.cpp" />
     <ClCompile Include="source\main.cpp" />
-    <ClCompile Include="source\entry_point.cpp" />
+    <ClCompile Include="source\entry_point.build.cpp">
+      <ObjectFileName>$(IntDir)entry_point.obj</ObjectFileName>
+    </ClCompile>
     <ClCompile Include="extern\auth\auth.cpp" />
     <ClCompile Include="source\memory\memory.cpp" />
     <ClCompile Include="source\sdk\engine.cpp" />
     <ClCompile Include="source\sdk\instance.cpp" />
     <ClCompile Include="source\sdk\mesh_part.cpp" />
     <ClCompile Include="source\utils\console.cpp" />
+    <ClCompile Include="source\utils\debug_diag.cpp" />
     <ClCompile Include="source\utils\logger.cpp" />
     <ClCompile Include="source\utils\window_utils.cpp" />
   </ItemGroup>
@@ -223,6 +240,7 @@ if exist "$(ProjectDir)third_party\lua\lua53-64.dll" copy /Y "$(ProjectDir)third
     <ClInclude Include="source\sdk\player.h" />
     <ClInclude Include="source\sdk\value.h" />
     <ClInclude Include="source\utils\console.h" />
+    <ClInclude Include="source\utils\debug_diag.h" />
     <ClInclude Include="source\utils\logger.h" />
     <ClInclude Include="source\utils\window_utils.h" />
   </ItemGroup>

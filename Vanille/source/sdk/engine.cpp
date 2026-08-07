@@ -41,60 +41,29 @@ namespace
         }
     }
 
-    std::uintptr_t resolve_fake_datamodel_to_datamodel(std::uintptr_t fake_datamodel)
-    {
-        if (!fake_datamodel)
-        {
-            return 0;
-        }
-
-        const auto datamodel_offset = roblox::offsets::datamodel::datamodel_ptr1
-            ? roblox::offsets::datamodel::datamodel_ptr1
-            : roblox::offsets::task_scheduler::fake_datamodel_to_datamodel;
-        if (!datamodel_offset)
-        {
-            return 0;
-        }
-
-        return memory->read<std::uintptr_t>(fake_datamodel + datamodel_offset);
-    }
-
     std::uintptr_t find_datamodel_from_static_pointer()
     {
         const auto module_base = memory->get_module_address();
         const auto fake_datamodel_pointer = roblox::offsets::datamodel::datamodel_ptr0;
-        if (!module_base || !fake_datamodel_pointer)
+        const auto datamodel_offset = roblox::offsets::datamodel::datamodel_ptr1;
+        if (!module_base || !fake_datamodel_pointer || !datamodel_offset)
         {
             return 0;
         }
 
         const auto fake_datamodel = memory->read<std::uintptr_t>(module_base + fake_datamodel_pointer);
-        return resolve_fake_datamodel_to_datamodel(fake_datamodel);
-    }
-
-    std::uintptr_t find_datamodel_via_visualengine()
-    {
-        const auto module_base = memory->get_module_address();
-        if (!module_base || !roblox::offsets::visualengine::visualengine_ptr)
+        if (!fake_datamodel)
         {
             return 0;
         }
 
-        const auto visualengine = memory->read<std::uintptr_t>(module_base + roblox::offsets::visualengine::visualengine_ptr);
-        if (!visualengine)
+        const auto datamodel = memory->read<std::uintptr_t>(fake_datamodel + datamodel_offset);
+        if (!datamodel)
         {
             return 0;
         }
 
-        // VisualEngine::FakeDataModel
-        const auto fake_datamodel_offset = roblox::offsets::visualengine::fake_datamodel;
-        if (!fake_datamodel_offset)
-        {
-            return 0;
-        }
-
-        const auto fake_datamodel = memory->read<std::uintptr_t>(visualengine + fake_datamodel_offset);
-        return resolve_fake_datamodel_to_datamodel(fake_datamodel);
+        return datamodel;
     }
 
     std::uintptr_t find_render_job()
@@ -178,18 +147,7 @@ namespace
             return 0;
         }
 
-        const auto static_datamodel = find_datamodel_from_static_pointer();
-        if (is_likely_datamodel(static_datamodel))
-        {
-            return static_datamodel;
-        }
-
-        const auto visualengine_datamodel = find_datamodel_via_visualengine();
-        if (is_likely_datamodel(visualengine_datamodel))
-        {
-            return visualengine_datamodel;
-        }
-
+        std::uintptr_t datamodel = 0;
         const auto render_job = find_render_job();
         if (render_job)
         {
@@ -214,21 +172,30 @@ namespace
                 }
                 else
                 {
-                    const auto render_job_datamodel = memory->read<std::uintptr_t>(fake_datamodel + datamodel_offset);
-                    if (!render_job_datamodel && should_log_engine_failure())
+                    datamodel = memory->read<std::uintptr_t>(fake_datamodel + datamodel_offset);
+                    if (!datamodel)
                     {
-                        logger_core::log_warning("rbx engine -> failed to read real datamodel ptr @ 0x{:X}", fake_datamodel + datamodel_offset);
+                        if (should_log_engine_failure())
+                        {
+                            logger_core::log_warning("rbx engine -> failed to read real datamodel ptr @ 0x{:X}", fake_datamodel + datamodel_offset);
+                        }
                     }
+                }
 
-                    if (is_likely_datamodel(render_job_datamodel))
-                    {
-                        return render_job_datamodel;
-                    }
+                if (is_likely_datamodel(datamodel))
+                {
+                    return datamodel;
                 }
             }
         }
 
-        return 0;
+        const auto static_datamodel = find_datamodel_from_static_pointer();
+        if (is_likely_datamodel(static_datamodel))
+        {
+            return static_datamodel;
+        }
+
+        return datamodel ? datamodel : static_datamodel;
     }
 
     std::uintptr_t find_renderview_address()
@@ -236,28 +203,6 @@ namespace
         if (!memory->is_process_alive())
         {
             return 0;
-        }
-
-        const auto module_base = memory->get_module_address();
-        if (module_base && roblox::offsets::visualengine::visualengine_ptr && roblox::offsets::visualengine::render_view)
-        {
-            const auto visualengine = memory->read<std::uintptr_t>(module_base + roblox::offsets::visualengine::visualengine_ptr);
-            if (visualengine)
-            {
-                const auto renderview = memory->read<std::uintptr_t>(
-                    visualengine + roblox::offsets::visualengine::render_view);
-                if (renderview)
-                {
-                    return renderview;
-                }
-
-                if (should_log_engine_failure())
-                {
-                    logger_core::log_warning(
-                        "rbx engine -> failed to read renderview ptr via visualengine @ 0x{:X}",
-                        visualengine + roblox::offsets::visualengine::render_view);
-                }
-            }
         }
 
         const auto render_job = find_render_job();
@@ -283,7 +228,35 @@ namespace
             }
         }
 
-        return 0;
+        // Fallback path for newer layouts: VisualEngine + RenderView offset (0xBF0 on current builds).
+        constexpr std::uintptr_t k_visualengine_renderview_offset = 0xBF0;
+        const auto module_base = memory->get_module_address();
+        if (!module_base || !roblox::offsets::visualengine::visualengine_ptr)
+        {
+            if (should_log_engine_failure())
+            {
+                logger_core::log_warning("rbx engine -> visualengine pointer offset not configured");
+            }
+            return 0;
+        }
+
+        const auto visualengine = memory->read<std::uintptr_t>(module_base + roblox::offsets::visualengine::visualengine_ptr);
+        if (!visualengine)
+        {
+            if (should_log_engine_failure())
+            {
+                logger_core::log_warning("rbx engine -> failed to read visualengine ptr @ 0x{:X}", module_base + roblox::offsets::visualengine::visualengine_ptr);
+            }
+            return 0;
+        }
+
+        const auto fallback_renderview = memory->read<std::uintptr_t>(visualengine + k_visualengine_renderview_offset);
+        if (!fallback_renderview && should_log_engine_failure())
+        {
+            logger_core::log_warning("rbx engine -> failed to read renderview ptr via visualengine @ 0x{:X}", visualengine + k_visualengine_renderview_offset);
+        }
+
+        return fallback_renderview;
     }
 }
 

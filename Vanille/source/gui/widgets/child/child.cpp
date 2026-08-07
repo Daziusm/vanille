@@ -1,5 +1,5 @@
 #include "../widgets.h"
-#include "../../colors/colors.h"
+#include "../../colors/colors_new.h"
 #include <imgui/imgui_internal.h>
 
 namespace
@@ -144,7 +144,7 @@ bool c_widgets::begin_padded_child(const char* str_id, ImGuiChildFlags child_fla
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImU32 top_col = ImGui::GetColorU32(c_colors::top_child_background);
-    ImU32 bottom_col = ImGui::GetColorU32(c_colors::bottom_child_background);
+    (void)use_gradient;
     auto snap_rect = [](ImRect rect) -> ImRect
     {
         rect.Min.x = IM_ROUND(rect.Min.x);
@@ -168,11 +168,7 @@ bool c_widgets::begin_padded_child(const char* str_id, ImGuiChildFlags child_fla
         ImVec2(outer_rect.Min.x + inner_offset, outer_rect.Min.y + inner_offset),
         ImVec2(outer_rect.Max.x - inner_offset, outer_rect.Max.y - inner_offset));
 
-    if (use_gradient)
-        c_colors::draw_rounded_gradient_rect(draw_list, outer_rect.Min, outer_rect.Max, top_col, bottom_col,
-                                             c_colors::panel_rounding);
-    else
-        draw_list->AddRectFilled(outer_rect.Min, outer_rect.Max, top_col, c_colors::panel_rounding);
+    draw_list->AddRectFilled(outer_rect.Min, outer_rect.Max, top_col, c_colors::panel_rounding);
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
     ImVec2 padding = use_margin ? ImVec2(8.0f, 8.0f) : ImVec2(0.0f, 0.0f);

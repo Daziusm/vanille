@@ -280,9 +280,77 @@ namespace rbx
         return get_class_name() == class_name;
     }
 
+    namespace
+    {
+        constexpr std::uintptr_t k_name_container_inner_offset = 0x8;
+
+        std::string read_c_string_at(std::uintptr_t ptr)
+        {
+            if (!ptr)
+            {
+                return {};
+            }
+
+            char buffer[256] = {};
+            if (!memory->read_raw(buffer, ptr, sizeof(buffer) - 1))
+            {
+                return {};
+            }
+            buffer[sizeof(buffer) - 1] = '\0';
+            return std::string(buffer);
+        }
+
+        std::string read_name_field(std::uintptr_t name_address)
+        {
+            if (!name_address)
+            {
+                return {};
+            }
+
+            const auto inline_value = memory->read_string(name_address);
+            if (inline_value != "Unknown" && !inline_value.empty())
+            {
+                return inline_value;
+            }
+
+            const auto name_ptr = memory->read<std::uintptr_t>(name_address);
+            if (name_ptr)
+            {
+                const auto value = memory->read_string(name_ptr);
+                if (value != "Unknown" && !value.empty())
+                {
+                    return value;
+                }
+
+                const auto raw_value = read_c_string_at(name_ptr);
+                if (!raw_value.empty())
+                {
+                    return raw_value;
+                }
+            }
+
+            return read_c_string_at(name_address);
+        }
+
+        void cache_name(std::uintptr_t cache_key, const std::string& value, double now)
+        {
+            if (value.empty())
+            {
+                return;
+            }
+
+            std::unique_lock lock(g_string_cache_mutex);
+            if (g_name_cache.size() >= k_cache_max_entries)
+            {
+                g_name_cache.clear();
+            }
+            g_name_cache[cache_key] = cached_string{ value, now };
+        }
+    }
+
     std::string instance_t::get_name() const
     {
-        if (!is_valid())
+        if (!is_valid() || !roblox::offsets::instance::name)
         {
             return {};
         }
@@ -297,80 +365,26 @@ namespace rbx
             }
         }
 
-        auto read_c_string = [](std::uintptr_t ptr) -> std::string
+        const std::uintptr_t name_container_offset = roblox::offsets::instance::name;
+        const std::uintptr_t container_ptr = memory->read<std::uintptr_t>(address + name_container_offset);
+        if (container_ptr)
         {
-            if (!ptr)
+            const auto container_name = read_name_field(container_ptr + k_name_container_inner_offset);
+            if (!container_name.empty())
             {
-                return {};
-            }
-
-            char buffer[256] = {};
-            if (!memory->read_raw(buffer, ptr, sizeof(buffer) - 1))
-            {
-                return {};
-            }
-            buffer[sizeof(buffer) - 1] = '\0';
-            return std::string(buffer);
-        };
-
-        const auto name_ptr = memory->read<std::uintptr_t>(address + roblox::offsets::instance::name);
-        if (name_ptr)
-        {
-            const auto value = memory->read_string(name_ptr);
-            if (value != "Unknown" && !value.empty())
-            {
-                {
-                    std::unique_lock lock(g_string_cache_mutex);
-                    if (g_name_cache.size() >= k_cache_max_entries)
-                    {
-                        g_name_cache.clear();
-                    }
-                    g_name_cache[address] = cached_string{ value, now };
-                }
-                return value;
-            }
-
-            const auto raw_value = read_c_string(name_ptr);
-            if (!raw_value.empty())
-            {
-                {
-                    std::unique_lock lock(g_string_cache_mutex);
-                    if (g_name_cache.size() >= k_cache_max_entries)
-                    {
-                        g_name_cache.clear();
-                    }
-                    g_name_cache[address] = cached_string{ raw_value, now };
-                }
-                return raw_value;
+                cache_name(address, container_name, now);
+                return container_name;
             }
         }
 
-        const auto inline_value = memory->read_string(address + roblox::offsets::instance::name);
-        if (inline_value != "Unknown")
+        const auto direct_name = read_name_field(address + name_container_offset);
+        if (!direct_name.empty())
         {
-            if (!inline_value.empty())
-            {
-                std::unique_lock lock(g_string_cache_mutex);
-                if (g_name_cache.size() >= k_cache_max_entries)
-                {
-                    g_name_cache.clear();
-                }
-                g_name_cache[address] = cached_string{ inline_value, now };
-            }
-            return inline_value;
+            cache_name(address, direct_name, now);
+            return direct_name;
         }
 
-        const auto fallback = read_c_string(address + roblox::offsets::instance::name);
-        if (!fallback.empty())
-        {
-            std::unique_lock lock(g_string_cache_mutex);
-            if (g_name_cache.size() >= k_cache_max_entries)
-            {
-                g_name_cache.clear();
-            }
-            g_name_cache[address] = cached_string{ fallback, now };
-        }
-        return fallback;
+        return {};
     }
 
     std::string instance_t::get_class_name() const

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "memory/memory.h"
 #include "sdk/offsets.h"
 #include "sdk/part.h"

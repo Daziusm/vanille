@@ -7,7 +7,7 @@
 #include "memory/memory.h"
 #include "sdk/instance.h"
 #include "sdk/offsets.h"
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 
 namespace rbx::humanoid
 {

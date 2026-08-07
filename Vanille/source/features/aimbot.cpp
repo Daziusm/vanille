@@ -18,7 +18,8 @@
 
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
-#include "globals/globals.h"
+#include "cache/team_utils.h"
+#include "globals/globals_fixed.h"
 #include "gui/overlay.hpp"
 #include "features/visibility.h"
 #include "sdk/camera.h"
@@ -359,9 +360,9 @@ namespace
         return best;
     }
 
-    bool player_blocked(const cache::player_state& player, std::uintptr_t local_team)
+    bool player_blocked(const cache::player_state& player, const cache::local_player_state& local)
     {
-        const player_relation relation = determine_relation(player, local_team);
+        const player_relation relation = determine_relation(player, local.team);
         if (relation == player_relation::friendly)
         {
             return true;
@@ -371,19 +372,9 @@ namespace
         {
             return true;
         }
-        if (features->aimbot_check_team)
+        if (features->aimbot_check_team && cache::team_utils::is_teammate(local, player))
         {
-            if (globals->game_id == lostfront_place_id)
-            {
-                if (player.has_team_billboard)
-                {
-                    return true;
-                }
-            }
-            else if (local_team != 0 && player.team == local_team)
-            {
-                return true;
-            }
+            return true;
         }
         if (features->aimbot_check_health && player.health <= 0.0f)
         {
@@ -1026,7 +1017,6 @@ namespace
                 return true;
             };
             const auto last_target_snapshot = get_target_copy();
-            const std::uintptr_t local_team = local.team;
             const bool visibility_enabled = visibility::can_run_visibility_check(features->aimbot_visibility_check);
 
         aim_target_state best{};
@@ -1048,7 +1038,7 @@ namespace
                     }
 
                     locked_present = true;
-                    if (player_blocked(player, local_team))
+                    if (player_blocked(player, local))
                     {
                         locked_blocked = true;
                         return false;
@@ -1124,7 +1114,7 @@ namespace
                         return true;
                     }
 
-                    if (player_blocked(player, local_team))
+                    if (player_blocked(player, local))
                     {
                         return true;
                     }
@@ -1198,7 +1188,7 @@ namespace
                     {
                         if (player.address == best.player_address)
                         {
-                            if (player_blocked(player, local_team))
+                            if (player_blocked(player, local))
                             {
                                 target_blocked = true;
                             }

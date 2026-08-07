@@ -62,9 +62,17 @@ namespace Chocola
             {
                 var payload = AcquireOffsets(version, installDir, settings, status);
                 if (payload == null || !IsUsableOffsets(payload.Offsets))
+                {
+                    if (TryGenerateValuesFromDumperJson(installDir, settings, version, status, out var generatedPath))
+                    {
+                        status?.Invoke("Offsets updated (roblox-dumper).");
+                        return true;
+                    }
+
                     throw new InvalidDataException(
                         "No usable offsets found for " + version + ". " +
-                        "offsets.imtheo.lol may not have this Roblox build yet — wait for Theo or set offsets_path in loader.ini.");
+                        "offsets.imtheo.lol may not have this Roblox build yet — wait for Theo, run roblox-dumper, or set offsets_path in loader.ini.");
+                }
 
                 var text = BuildValuesText(version, payload.Offsets, payload.Source);
                 Directory.CreateDirectory(installDir);
@@ -319,9 +327,177 @@ namespace Chocola
                 {
                     return true;
                 }
+
+                if (line.IndexOf("rbx_string::length", StringComparison.OrdinalIgnoreCase) >= 0
+                    && (line.IndexOf("'0x0'", StringComparison.OrdinalIgnoreCase) >= 0
+                        || line.IndexOf("=> '0x0'", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    return true;
+                }
+
+                if (line.IndexOf("renderview::force_flag_byte", StringComparison.OrdinalIgnoreCase) >= 0
+                    && line.IndexOf("0x228", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
             }
 
             return false;
+        }
+
+        static bool TryGenerateValuesFromDumperJson(
+            string installDir,
+            LoaderSettings settings,
+            string version,
+            Action<string> status,
+            out string valuesPath)
+        {
+            valuesPath = Path.Combine(installDir, "values.txt");
+            foreach (var candidate in DumperJsonCandidates(installDir, settings))
+            {
+                if (!LooksLikeJonahJson(candidate))
+                    continue;
+
+                status?.Invoke("Converting roblox-dumper JSON...");
+                if (!TryRunGenerateValuesScript(candidate, valuesPath, out var scriptError))
+                {
+                    status?.Invoke(scriptError ?? "roblox-dumper JSON conversion failed.");
+                    continue;
+                }
+
+                if (!File.Exists(valuesPath) || ValuesLookStale(valuesPath))
+                    continue;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        static IEnumerable<string> DumperJsonCandidates(string installDir, LoaderSettings settings)
+        {
+            if (!string.IsNullOrWhiteSpace(settings?.OffsetsPath))
+                yield return settings.OffsetsPath.Trim();
+
+            if (!string.IsNullOrWhiteSpace(settings?.DumperPath))
+            {
+                var dumperPath = settings.DumperPath.Trim();
+                yield return Path.Combine(dumperPath, "offsets.json");
+                if (dumperPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                    yield return dumperPath;
+            }
+
+            yield return Path.Combine(installDir, "offsets.json");
+            yield return Path.Combine(installDir, "..", "roblox-dumper-official", "offsets.json");
+            yield return Path.Combine(installDir, "..", "offsets.json");
+        }
+
+        static bool LooksLikeJonahJson(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return false;
+
+            try
+            {
+                var text = File.ReadAllText(path, Encoding.UTF8);
+                return text.IndexOf("\"metadata\"", StringComparison.OrdinalIgnoreCase) >= 0
+                    && text.IndexOf("\"offsets\"", StringComparison.OrdinalIgnoreCase) >= 0
+                    && text.IndexOf("\"Offsets\"", StringComparison.OrdinalIgnoreCase) < 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        static string FindGenerateValuesScript(string installDir)
+        {
+            var candidates = new[]
+            {
+                Path.Combine(installDir, "Vanille", "tools", "generate_values.py"),
+                Path.Combine(installDir, "..", "Vanille", "tools", "generate_values.py"),
+                Path.Combine(installDir, "..", "..", "Vanille", "tools", "generate_values.py"),
+                @"D:\Vanille\Vanille\tools\generate_values.py",
+            };
+
+            foreach (var candidate in candidates)
+            {
+                try
+                {
+                    var full = Path.GetFullPath(candidate);
+                    if (File.Exists(full))
+                        return full;
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
+        }
+
+        static bool TryRunGenerateValuesScript(string jsonPath, string outputPath, out string error)
+        {
+            error = null;
+            var script = FindGenerateValuesScript(Path.GetDirectoryName(outputPath) ?? "");
+            if (script == null)
+            {
+                error = "generate_values.py not found beside the install.";
+                return false;
+            }
+
+            var generatedPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(script) ?? "", "..", "values.txt"));
+            try
+            {
+                var start = new ProcessStartInfo
+                {
+                    FileName = "python",
+                    Arguments = "\"" + script + "\" \"" + jsonPath + "\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+
+                using (var process = Process.Start(start))
+                {
+                    if (process == null)
+                    {
+                        error = "Failed to start python.";
+                        return false;
+                    }
+
+                    var stderr = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    if (process.ExitCode != 0)
+                    {
+                        error = string.IsNullOrWhiteSpace(stderr) ? "generate_values.py failed." : stderr.Trim();
+                        return false;
+                    }
+                }
+
+                if (!File.Exists(generatedPath))
+                {
+                    error = "generate_values.py did not produce values.txt.";
+                    return false;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? installFallbackDir(outputPath));
+                File.Copy(generatedPath, outputPath, true);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        static string installFallbackDir(string outputPath)
+        {
+            return string.IsNullOrWhiteSpace(outputPath)
+                ? LoaderSettings.DefaultInstallPath()
+                : Path.GetDirectoryName(outputPath);
         }
 
         static OffsetPayload ParseOffsetsJson(string json, string sourceLabel)
@@ -387,7 +563,7 @@ namespace Chocola
             yield return Pair("task_scheduler::job_start", G(o, "TaskScheduler", "JobStart", strict));
             yield return Pair("task_scheduler::job_end", G(o, "TaskScheduler", "JobEnd", strict));
             yield return Pair("task_scheduler::job_name", G(o, "TaskScheduler", "JobName", strict));
-            yield return Pair("task_scheduler::job_stride", "0x10");
+            yield return Pair("task_scheduler::job_stride", "0x8");
             yield return Pair("task_scheduler::render_job_to_fake_datamodel", G(o, "RenderJob", "FakeDataModel", strict));
             yield return Pair("task_scheduler::fake_datamodel_to_datamodel", G(o, "FakeDataModel", "RealDataModel", strict));
             yield return Pair("task_scheduler::render_job_to_renderview", G(o, "RenderJob", "RenderView", strict));
@@ -396,13 +572,10 @@ namespace Chocola
             yield return Pair("datamodel::datamodel_ptr0", G(o, "FakeDataModel", "Pointer", strict));
             yield return Pair("datamodel::datamodel_ptr1", G(o, "FakeDataModel", "RealDataModel", strict));
             yield return Pair("datamodel::place_id", G(o, "DataModel", "PlaceId", strict));
-            yield return Pair("datamodel::workspace", G(o, "DataModel", "Workspace", strict));
             yield return Pair("visualengine::visualengine_ptr", G(o, "VisualEngine", "Pointer", strict));
             yield return Pair("visualengine::view_matrix", G(o, "VisualEngine", "ViewMatrix", strict));
             yield return Pair("visualengine::dimensions", G(o, "VisualEngine", "Dimensions", strict));
-            yield return Pair("visualengine::render_view", G(o, "VisualEngine", "RenderView", strict));
-            yield return Pair("visualengine::fake_datamodel", G(o, "VisualEngine", "FakeDataModel", strict));
-            yield return Pair("renderview::force_flag_byte", G(o, "RenderView", "LightingValid", strict));
+            yield return Pair("renderview::force_flag_byte", G(o, "RenderView", "LightingValid", strict, 0x150));
             yield return Pair("renderview::force_flag_bool", G(o, "RenderView", "SkyValid", strict));
             yield return Pair("players::local_player", G(o, "Player", "LocalPlayer", strict));
             yield return Pair("player::display_name", G(o, "Player", "DisplayName", strict));
@@ -451,7 +624,7 @@ namespace Chocola
             yield return Pair("instance::class_base", G(o, "Instance", "ClassBase", strict));
             yield return Pair("instance::class_descriptor", G(o, "Instance", "ClassDescriptor", strict));
             yield return Pair("instance::class_name", G(o, "Instance", "ClassName", strict));
-            yield return Pair("instance::name", G(o, "Instance", "Name", strict));
+            yield return Pair("instance::name", G(o, "Instance", "NameContainer", strict, 0x70));
             yield return Pair("instance::parent", G(o, "Instance", "Parent", strict));
             yield return Pair("instance::current_camera", G(o, "Workspace", "CurrentCamera", strict));
             yield return Pair("instance::children_stride", "0x10");
@@ -489,7 +662,6 @@ namespace Chocola
             yield return Pair("lighting::fog_start", G(o, "Lighting", "FogStart", strict));
             yield return Pair("lighting::geographic_latitude", G(o, "Lighting", "GeographicLatitude", strict));
             yield return Pair("lighting::outdoor_ambient", G(o, "Lighting", "OutdoorAmbient", strict));
-            yield return Pair("lighting::sky", G(o, "Lighting", "Sky", strict));
             yield return Pair("sky::moon_angular_size", G(o, "Sky", "MoonAngularSize", strict));
             yield return Pair("sky::moon_texture_id", G(o, "Sky", "MoonTextureId", strict));
             yield return Pair("sky::skybox_bk", G(o, "Sky", "SkyboxBk", strict));
@@ -519,6 +691,28 @@ namespace Chocola
             return new KeyValuePair<string, string>(key, value);
         }
 
+        static string InstanceNameOffset(Dictionary<string, Dictionary<string, int>> o, bool strict)
+        {
+            Dictionary<string, int> instance;
+            if (!o.TryGetValue("Instance", out instance) || instance == null)
+                instance = null;
+
+            int nameContainer = 0x70;
+            int nameInner = 0x8;
+            if (instance != null)
+            {
+                int container;
+                if (instance.TryGetValue("NameContainer", out container) && container != 0)
+                    nameContainer = container;
+
+                int name;
+                if (instance.TryGetValue("Name", out name) && name != 0)
+                    nameInner = name;
+            }
+
+            return Hx(nameContainer + nameInner);
+        }
+
         static string G(
             Dictionary<string, Dictionary<string, int>> o,
             string ns,
@@ -531,14 +725,19 @@ namespace Chocola
                 section = null;
 
             int value;
-            if (section != null && section.TryGetValue(key, out value) && value != 0)
+            if (section != null && section.TryGetValue(key, out value))
+            {
+                if (value != 0)
+                    return Hx(value);
+
+                if (fallback.HasValue)
+                    return Hx(fallback.Value);
+
                 return Hx(value);
+            }
 
             if (fallback.HasValue)
                 return Hx(fallback.Value);
-
-            if (section != null && section.TryGetValue(key, out value))
-                return Hx(value);
 
             if (!strict)
                 return "0x0";

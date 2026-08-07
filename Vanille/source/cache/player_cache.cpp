@@ -20,7 +20,7 @@
 #include <cctype>
 
 #include "cache/local_player_cache.h"
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "memory/memory.h"
 #include "sdk/engine.h"
 #include "sdk/humanoid.h"
@@ -50,6 +50,8 @@ namespace
         rbx::instance_t model;
         std::uintptr_t team = 0;
         bool enemy_folder = false;
+        bool pf_enemy = false;
+        bool pf_enemy_known = false;
     };
 
     std::mutex g_mesh_refresh_mutex;
@@ -239,6 +241,52 @@ namespace
             return {};
         }
 
+        auto resolve_label_from_billboard = [](const rbx::instance_t& billboard) -> rbx::instance_t
+        {
+            if (!billboard.is_valid())
+            {
+                return {};
+            }
+
+            const auto player_tag = billboard.find_first_child("PlayerTag");
+            if (player_tag.is_valid() && player_tag.get_class_name() == "TextLabel")
+            {
+                return player_tag;
+            }
+
+            auto text_label = billboard.find_first_child_by_class("TextLabel");
+            if (!text_label.is_valid())
+            {
+                text_label = find_first_descendant_by_class_limited(billboard, "TextLabel");
+            }
+            return text_label;
+        };
+
+        const auto direct_name_tag = model.find_first_child("NameTagGui");
+        if (direct_name_tag.is_valid())
+        {
+            if (const auto label = resolve_label_from_billboard(direct_name_tag); label.is_valid())
+            {
+                return label;
+            }
+        }
+
+        for (const auto& child : get_children_safely(model, "pf.model.children"))
+        {
+            if (!child.is_valid())
+            {
+                continue;
+            }
+
+            if (child.get_class_name() == "BillboardGui")
+            {
+                if (const auto label = resolve_label_from_billboard(child); label.is_valid())
+                {
+                    return label;
+                }
+            }
+        }
+
         rbx::instance_t head;
         if (parts && parts->head.instance.is_valid())
         {
@@ -252,8 +300,7 @@ namespace
 
         if (!head.is_valid())
         {
-            const auto model_children = get_children_safely(model, "pf.model.children");
-            for (const auto& child : model_children)
+            for (const auto& child : get_children_safely(model, "pf.model.children"))
             {
                 if (!child.is_valid())
                 {
@@ -285,17 +332,8 @@ namespace
         {
             billboard = find_first_descendant_by_class_limited(head, "BillboardGui", 256);
         }
-        if (!billboard.is_valid())
-        {
-            return {};
-        }
 
-        auto text_label = billboard.find_first_child_by_class("TextLabel");
-        if (!text_label.is_valid())
-        {
-            text_label = find_first_descendant_by_class_limited(billboard, "TextLabel");
-        }
-        return text_label;
+        return resolve_label_from_billboard(billboard);
     }
 
     std::optional<std::string> read_pf_name_from_billboard(const rbx::instance_t& model, const cache::character_parts* parts = nullptr)
@@ -575,7 +613,7 @@ namespace
     
     std::filesystem::path mesh_temp_directory()
     {
-        auto base = std::filesystem::temp_directory_path() / "vanille_meshes";
+        auto base = std::filesystem::temp_directory_path() / "fragment_meshes";
         std::error_code ec;
         std::filesystem::create_directories(base, ec);
         return base;
@@ -726,6 +764,121 @@ namespace cache
         return globals->datamodel.is_valid() && globals->players.is_valid() && globals->workspace.is_valid();
     }
 
+    void apply_pf_enemy_flags_from_model(const rbx::instance_t& model, pf_model_entry& entry)
+    {
+        entry.pf_enemy_known = false;
+        entry.pf_enemy = false;
+
+        if (const auto color = read_pf_textlabel_color3(model))
+        {
+            entry.pf_enemy = pf_is_enemy_label_color(*color);
+            entry.pf_enemy_known = true;
+            return;
+        }
+
+        if (entry.enemy_folder)
+        {
+            entry.pf_enemy = true;
+            entry.pf_enemy_known = true;
+        }
+    }
+
+    bool is_pf_player_model(const rbx::instance_t& instance)
+    {
+        if (!instance.is_valid() || instance.get_class_name() != "Model")
+        {
+            return false;
+        }
+
+        if (find_pf_name_text_label(instance).is_valid())
+        {
+            return true;
+        }
+
+        const auto name_tag = instance.find_first_child("NameTagGui");
+        return name_tag.is_valid() && name_tag.get_class_name() == "BillboardGui";
+    }
+
+    bool detect_pf_enemy_folder(const rbx::instance_t& team_folder)
+    {
+        if (!team_folder.is_valid())
+        {
+            return false;
+        }
+
+        std::vector<rbx::instance_t> stack = get_children_safely(team_folder, "workspace.players.team");
+        std::size_t visited = 0;
+        constexpr std::size_t k_max_nodes = 2048;
+
+        while (!stack.empty() && visited < k_max_nodes)
+        {
+            const auto node = stack.back();
+            stack.pop_back();
+            ++visited;
+
+            if (!node.is_valid())
+            {
+                continue;
+            }
+
+            if (node.get_class_name() == "Model")
+            {
+                if (const auto color = read_pf_textlabel_color3(node))
+                {
+                    return pf_is_enemy_label_color(*color);
+                }
+            }
+
+            if (node.get_class_name() == "Folder" || node.get_class_name() == "Model")
+            {
+                const auto children = get_children_safely(node, "workspace.players.team.walk");
+                stack.insert(stack.end(), children.begin(), children.end());
+            }
+        }
+
+        return false;
+    }
+
+    void collect_pf_player_models_recursive(
+        const rbx::instance_t& node,
+        int depth,
+        std::uintptr_t team_index,
+        bool enemy_folder,
+        std::vector<pf_model_entry>& models,
+        std::unordered_set<std::uintptr_t>& seen)
+    {
+        if (!node.is_valid() || depth > 6)
+        {
+            return;
+        }
+
+        if (is_pf_player_model(node))
+        {
+            const std::uintptr_t address = node.get_address();
+            if (address != 0 && seen.insert(address).second)
+            {
+                pf_model_entry entry{};
+                entry.model = node;
+                entry.team = team_index;
+                entry.enemy_folder = enemy_folder;
+                apply_pf_enemy_flags_from_model(node, entry);
+                models.push_back(entry);
+            }
+            return;
+        }
+
+        if (node.get_class_name() != "Folder" && node.get_class_name() != "Model")
+        {
+            return;
+        }
+
+        const auto children = get_children_safely(node, "workspace.players.team.recurse");
+        for (const auto& child : children)
+        {
+            collect_pf_player_models_recursive(child, depth + 1, team_index, enemy_folder, models, seen);
+        }
+    }
+
     std::vector<pf_model_entry> collect_phantom_forces_models()
     {
         static double last_refresh = 0.0;
@@ -748,7 +901,9 @@ namespace cache
         if (!workspace_players.is_valid())
             return models;
 
-        const bool enemy_only = features->team_check;
+        std::unordered_set<std::uintptr_t> seen;
+        seen.reserve(64);
+
         auto team_folders = get_children_safely(workspace_players, "workspace.players");
         for (std::size_t team_index = 0; team_index < team_folders.size(); ++team_index)
         {
@@ -756,45 +911,17 @@ namespace cache
             if (!team_folder.is_valid())
                 continue;
 
-            bool enemy_folder = false;
-            if (enemy_only)
-            {
-                const auto team_children = get_children_safely(team_folder, "workspace.players.team");
-                for (const auto& child : team_children)
-                {
-                    if (!child.is_valid() || !model_has_part_child(child))
-                    {
-                        continue;
-                    }
-                    const auto color = read_pf_textlabel_color3(child);
-                    if (!color)
-                    {
-                        continue;
-                    }
-
-                    enemy_folder = pf_is_enemy_label_color(*color);
-                    break;
-                }
-            }
-
-            if (enemy_only && !enemy_folder)
-            {
-                continue;
-            }
-
-            auto team_children = get_children_safely(team_folder, "workspace.players.team");
+            const bool enemy_folder = detect_pf_enemy_folder(team_folder);
+            const auto team_children = get_children_safely(team_folder, "workspace.players.team");
             for (const auto& child : team_children)
             {
-                if (!child.is_valid())
-                    continue;
-                if (!model_has_part_child(child))
-                    continue;
-
-                pf_model_entry entry{};
-                entry.model = child;
-                entry.team = static_cast<std::uintptr_t>(team_index + 1); // keep non-zero team ids
-                entry.enemy_folder = enemy_folder;
-                models.push_back(entry);
+                collect_pf_player_models_recursive(
+                    child,
+                    0,
+                    static_cast<std::uintptr_t>(team_index + 1),
+                    enemy_folder,
+                    models,
+                    seen);
             }
         }
 
@@ -877,15 +1004,14 @@ namespace cache
         dummy_state next_dummy{};
         const bool is_phantom_forces = (globals->game_id == phantom_forces_place_id);
         const bool is_img = (globals->game_id == img_place_id);
-        const bool pf_enemy_only = is_phantom_forces && features->team_check;
         std::vector<pf_model_entry> pf_models;
-        std::unordered_map<std::uintptr_t, std::uintptr_t> pf_team_by_model;
+        std::unordered_map<std::uintptr_t, pf_model_entry> pf_entry_by_model;
         std::unordered_map<std::uintptr_t, std::uint64_t> pf_user_id_by_character;
         std::unordered_map<std::string, std::uint64_t> pf_user_id_by_name;
         if (is_phantom_forces)
         {
             pf_models = collect_phantom_forces_models();
-            pf_team_by_model.reserve(pf_models.size());
+            pf_entry_by_model.reserve(pf_models.size());
             pf_user_id_by_character.reserve(children.size());
             pf_user_id_by_name.reserve(children.size() * 2);
             for (const auto& entry : pf_models)
@@ -895,7 +1021,7 @@ namespace cache
                 const std::uintptr_t addr = entry.model.get_address();
                 if (addr == 0)
                     continue;
-                pf_team_by_model[addr] = entry.team;
+                pf_entry_by_model[addr] = entry;
             }
 
             for (const auto& child : children)
@@ -1027,11 +1153,15 @@ namespace cache
                 }
 
                 const std::uintptr_t character_address = state.character.get_address();
-                auto it = pf_team_by_model.find(character_address);
-                if (it == pf_team_by_model.end())
+                auto it = pf_entry_by_model.find(character_address);
+                if (it == pf_entry_by_model.end())
                 {
                     continue;
                 }
+
+                state.team = it->second.team;
+                state.pf_enemy = it->second.pf_enemy;
+                state.pf_enemy_known = it->second.pf_enemy_known;
             }
             if (state.address != 0)
             {
@@ -1043,9 +1173,6 @@ namespace cache
         {
             for (const auto& entry : pf_models)
             {
-                if (pf_enemy_only && !entry.enemy_folder)
-                    continue;
-
                 const auto& model = entry.model;
                 if (!model.is_valid())
                     continue;
@@ -1064,6 +1191,8 @@ namespace cache
                 state.name = model_internal_name;
                 state.display_name = state.name;
                 state.team = entry.team;
+                state.pf_enemy = entry.pf_enemy;
+                state.pf_enemy_known = entry.pf_enemy_known;
                 state.humanoid = rbx::humanoid::find_humanoid(model);
                 update_character_parts(state, model);
 
@@ -1324,6 +1453,11 @@ namespace cache
                 out_state.name = *pf_name;
                 out_state.display_name = *pf_name;
             }
+
+            pf_model_entry pf_flags{};
+            apply_pf_enemy_flags_from_model(out_state.character, pf_flags);
+            out_state.pf_enemy = pf_flags.pf_enemy;
+            out_state.pf_enemy_known = pf_flags.pf_enemy_known;
         }
         if (is_lostfront)
         {

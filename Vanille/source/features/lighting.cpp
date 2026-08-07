@@ -9,7 +9,7 @@
 #include <chrono>
 #include <algorithm>
 
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "memory/memory.h"
 #include "sdk/offsets.h"
 #include "utils/logger.h"
@@ -177,32 +177,6 @@ namespace
         }
 
         return std::clamp(features->lighting_reapply_interval_seconds, 0.1f, 10.0f);
-    }
-
-    rbx::instance_t resolve_sky_instance()
-    {
-        if (!globals->lighting.is_valid())
-        {
-            return {};
-        }
-
-        auto sky_instance = globals->lighting.find_first_child_by_class("Sky");
-        if (sky_instance.is_valid() && is_valid_ptr(sky_instance.get_address()))
-        {
-            return sky_instance;
-        }
-
-        if (roblox::offsets::lighting::sky)
-        {
-            const auto sky_ptr = memory->read<std::uintptr_t>(
-                globals->lighting.get_address() + roblox::offsets::lighting::sky);
-            if (is_valid_ptr(sky_ptr))
-            {
-                return rbx::instance_t(sky_ptr);
-            }
-        }
-
-        return {};
     }
 
     void ensure_sky_loop_started()
@@ -444,94 +418,61 @@ namespace lighting
             roblox::offsets::sky::skybox_rt &&
             roblox::offsets::sky::skybox_up;
 
-        const rbx::instance_t sky_instance = resolve_sky_instance();
-        const bool sky_valid = sky_instance.is_valid() && is_valid_ptr(sky_instance.get_address());
-
-        if (sky_offsets_available && sky_valid && features->lighting_enable_skybox)
+        if (sky_offsets_available && features->lighting_enable_skybox)
         {
-            const auto sky_base = sky_instance.get_address();
-            const std::array<std::uintptr_t, k_skybox_face_count> sky_addresses = {
-                sky_base + roblox::offsets::sky::skybox_bk,
-                sky_base + roblox::offsets::sky::skybox_dn,
-                sky_base + roblox::offsets::sky::skybox_ft,
-                sky_base + roblox::offsets::sky::skybox_lf,
-                sky_base + roblox::offsets::sky::skybox_rt,
-                sky_base + roblox::offsets::sky::skybox_up
-            };
-
-            const int preset_count = static_cast<int>(k_skybox_presets.size());
-            const int preset_index = std::clamp(features->lighting_skybox_preset, 0, preset_count - 1);
-            const auto& faces = k_skybox_presets[static_cast<std::size_t>(preset_index)].faces;
-
-            if (!defaults.skybox_cached)
+            auto sky_instance = globals->lighting.find_first_child_by_class("Sky");
+            if (sky_instance.is_valid() && is_valid_ptr(sky_instance.get_address()))
             {
-                for (std::size_t i = 0; i < k_skybox_face_count; ++i)
-                {
-                    defaults.skybox_values[i] = memory->read_string(sky_addresses[i]);
-                }
-                defaults.skybox_cached = true;
-            }
+                const auto sky_base = sky_instance.get_address();
+                const std::array<std::uintptr_t, k_skybox_face_count> sky_addresses = {
+                    sky_base + roblox::offsets::sky::skybox_bk,
+                    sky_base + roblox::offsets::sky::skybox_dn,
+                    sky_base + roblox::offsets::sky::skybox_ft,
+                    sky_base + roblox::offsets::sky::skybox_lf,
+                    sky_base + roblox::offsets::sky::skybox_rt,
+                    sky_base + roblox::offsets::sky::skybox_up
+                };
 
-            if (preset_index == 0)
-            {
-                for (std::size_t i = 0; i < k_skybox_face_count; ++i)
+                const int preset_count = static_cast<int>(k_skybox_presets.size());
+                const int preset_index = std::clamp(features->lighting_skybox_preset, 0, preset_count - 1);
+                const auto& faces = k_skybox_presets[static_cast<std::size_t>(preset_index)].faces;
+
+                if (!defaults.skybox_cached)
                 {
-                    const auto addr = sky_addresses[i];
-                    if (!is_valid_ptr(addr))
+                    for (std::size_t i = 0; i < k_skybox_face_count; ++i)
                     {
-                        continue;
+                        defaults.skybox_values[i] = memory->read_string(sky_addresses[i]);
                     }
-                    memory->write_string(addr, defaults.skybox_values[i]);
+                    defaults.skybox_cached = true;
                 }
-            }
-            else
-            {
-                for (std::size_t i = 0; i < k_skybox_face_count; ++i)
+
+                if (preset_index == 0)
                 {
-                    const auto addr = sky_addresses[i];
-                    if (!is_valid_ptr(addr))
+                    for (std::size_t i = 0; i < k_skybox_face_count; ++i)
                     {
-                        continue;
+                        const auto addr = sky_addresses[i];
+                        if (!is_valid_ptr(addr))
+                        {
+                            continue;
+                        }
+                        memory->write_string(addr, defaults.skybox_values[i]);
                     }
-                    memory->write_string(addr, faces[i]);
                 }
-            }
-        }
-        else if (defaults.skybox_cached && sky_offsets_available && sky_valid)
-        {
-            const auto sky_base = sky_instance.get_address();
-            const std::array<std::uintptr_t, k_skybox_face_count> sky_addresses = {
-                sky_base + roblox::offsets::sky::skybox_bk,
-                sky_base + roblox::offsets::sky::skybox_dn,
-                sky_base + roblox::offsets::sky::skybox_ft,
-                sky_base + roblox::offsets::sky::skybox_lf,
-                sky_base + roblox::offsets::sky::skybox_rt,
-                sky_base + roblox::offsets::sky::skybox_up
-            };
-            for (std::size_t i = 0; i < k_skybox_face_count; ++i)
-            {
-                if (!is_valid_ptr(sky_addresses[i]))
+                else
                 {
-                    continue;
+                    for (std::size_t i = 0; i < k_skybox_face_count; ++i)
+                    {
+                        const auto addr = sky_addresses[i];
+                        if (!is_valid_ptr(addr))
+                        {
+                            continue;
+                        }
+                        memory->write_string(addr, faces[i]);
+                    }
                 }
-                memory->write_string(sky_addresses[i], defaults.skybox_values[i]);
-            }
-            defaults.skybox_cached = false;
-        }
-        else if (!sky_valid)
-        {
-            defaults.skybox_cached = false;
-        }
-
-        if (sky_valid)
-        {
-            const auto sky_base = sky_instance.get_address();
-
-            if (roblox::offsets::sky::star_count)
-            {
-                const auto star_addr = sky_base + roblox::offsets::sky::star_count;
-                if (features->lighting_enable_skybox)
+                if (roblox::offsets::sky::star_count)
                 {
+                    const auto star_addr = sky_base + roblox::offsets::sky::star_count;
                     if (!defaults.star_count_cached)
                     {
                         defaults.star_count = memory->read<int>(star_addr);
@@ -539,88 +480,127 @@ namespace lighting
                     }
                     memory->write<int>(star_addr, features->lighting_star_count);
                 }
-                else if (defaults.star_count_cached)
-                {
-                    memory->write<int>(star_addr, defaults.star_count);
-                    defaults.star_count_cached = false;
-                }
-            }
 
-            if (roblox::offsets::sky::sun_texture_id)
-            {
-                const auto sun_addr = sky_base + roblox::offsets::sky::sun_texture_id;
-                if (!defaults.sun_texture_cached)
+                if (roblox::offsets::sky::sun_texture_id)
                 {
-                    defaults.sun_texture = memory->read_string(sun_addr);
-                    defaults.sun_texture_cached = true;
+                    const auto sun_addr = sky_base + roblox::offsets::sky::sun_texture_id;
+                    if (!defaults.sun_texture_cached)
+                    {
+                        defaults.sun_texture = memory->read_string(sun_addr);
+                        defaults.sun_texture_cached = true;
+                    }
+                    if (features->lighting_enable_sun_texture)
+                    {
+                        const std::string& sun_texture = !features->lighting_sun_texture.empty() ? features->lighting_sun_texture : k_default_sun_texture;
+                        memory->write_string(sun_addr, sun_texture);
+                    }
+                    else if (!defaults.sun_texture.empty())
+                    {
+                        memory->write_string(sun_addr, defaults.sun_texture);
+                    }
                 }
-                if (features->lighting_enable_sun_texture)
-                {
-                    const std::string& sun_texture = !features->lighting_sun_texture.empty() ? features->lighting_sun_texture : k_default_sun_texture;
-                    memory->write_string(sun_addr, sun_texture);
-                }
-                else if (!defaults.sun_texture.empty())
-                {
-                    memory->write_string(sun_addr, defaults.sun_texture);
-                }
-            }
 
-            if (roblox::offsets::sky::moon_texture_id)
-            {
-                const auto moon_addr = sky_base + roblox::offsets::sky::moon_texture_id;
-                if (!defaults.moon_texture_cached)
+                if (roblox::offsets::sky::moon_texture_id)
                 {
-                    defaults.moon_texture = memory->read_string(moon_addr);
-                    defaults.moon_texture_cached = true;
+                    const auto moon_addr = sky_base + roblox::offsets::sky::moon_texture_id;
+                    if (!defaults.moon_texture_cached)
+                    {
+                        defaults.moon_texture = memory->read_string(moon_addr);
+                        defaults.moon_texture_cached = true;
+                    }
+                    if (features->lighting_enable_moon_texture)
+                    {
+                        const std::string& moon_texture = !features->lighting_moon_texture.empty() ? features->lighting_moon_texture : k_default_moon_texture;
+                        memory->write_string(moon_addr, moon_texture);
+                    }
+                    else if (!defaults.moon_texture.empty())
+                    {
+                        memory->write_string(moon_addr, defaults.moon_texture);
+                    }
                 }
-                if (features->lighting_enable_moon_texture)
-                {
-                    const std::string& moon_texture = !features->lighting_moon_texture.empty() ? features->lighting_moon_texture : k_default_moon_texture;
-                    memory->write_string(moon_addr, moon_texture);
-                }
-                else if (!defaults.moon_texture.empty())
-                {
-                    memory->write_string(moon_addr, defaults.moon_texture);
-                }
-            }
 
-            if (features->lighting_enable_skybox
-                || features->lighting_enable_sun_texture
-                || features->lighting_enable_moon_texture)
-            {
                 force_renderview_flag();
+            }
+            else
+            {
+                defaults.skybox_cached = false;
+                defaults.star_count_cached = false;
+                defaults.sun_texture_cached = false;
+                defaults.moon_texture_cached = false;
             }
         }
         else
         {
+            if (defaults.star_count_cached && roblox::offsets::sky::star_count && globals->lighting.is_valid())
+            {
+                const auto sky_instance = globals->lighting.find_first_child_by_class("Sky");
+                if (sky_instance.is_valid())
+                {
+                    memory->write<int>(sky_instance.get_address() + roblox::offsets::sky::star_count, defaults.star_count);
+                }
+            }
             defaults.star_count_cached = false;
-            defaults.sun_texture_cached = false;
-            defaults.moon_texture_cached = false;
-        }
 
-        if (has_active_lighting_override())
-        {
-            force_renderview_flag();
+            if (defaults.sun_texture_cached && roblox::offsets::sky::sun_texture_id && globals->lighting.is_valid())
+            {
+                const auto sky_instance = globals->lighting.find_first_child_by_class("Sky");
+                if (sky_instance.is_valid())
+                {
+                    memory->write_string(sky_instance.get_address() + roblox::offsets::sky::sun_texture_id, defaults.sun_texture);
+                }
+            }
+            defaults.sun_texture_cached = false;
+
+            if (defaults.moon_texture_cached && roblox::offsets::sky::moon_texture_id && globals->lighting.is_valid())
+            {
+                const auto sky_instance = globals->lighting.find_first_child_by_class("Sky");
+                if (sky_instance.is_valid())
+                {
+                    memory->write_string(sky_instance.get_address() + roblox::offsets::sky::moon_texture_id, defaults.moon_texture);
+                }
+            }
+            defaults.moon_texture_cached = false;
+
+            if (defaults.skybox_cached && globals->lighting.is_valid())
+            {
+                auto sky_instance = globals->lighting.find_first_child_by_class("Sky");
+                if (sky_instance.is_valid())
+                {
+                    const auto sky_base = sky_instance.get_address();
+                    const std::array<std::uintptr_t, k_skybox_face_count> sky_addresses = {
+                        sky_base + roblox::offsets::sky::skybox_bk,
+                        sky_base + roblox::offsets::sky::skybox_dn,
+                        sky_base + roblox::offsets::sky::skybox_ft,
+                        sky_base + roblox::offsets::sky::skybox_lf,
+                        sky_base + roblox::offsets::sky::skybox_rt,
+                        sky_base + roblox::offsets::sky::skybox_up
+                    };
+                    for (std::size_t i = 0; i < k_skybox_face_count; ++i)
+                    {
+                        if (!is_valid_ptr(sky_addresses[i]))
+                        {
+                            continue;
+                        }
+                        memory->write_string(sky_addresses[i], defaults.skybox_values[i]);
+                    }
+                }
+            }
+            defaults.skybox_cached = false;
         }
 
     }
 
     void force_renderview_flag()
     {
-        if (!globals->renderview.is_valid())
+        if (!globals->renderview.is_valid() ||
+            !roblox::offsets::renderview::force_flag_byte ||
+            !roblox::offsets::renderview::force_flag_bool)
         {
             return;
         }
-
         const auto renderview_addr = globals->renderview.get_address();
-        if (roblox::offsets::renderview::force_flag_byte)
-        {
-            memory->write<bool>(renderview_addr + roblox::offsets::renderview::force_flag_byte, false);
-        }
-        if (roblox::offsets::renderview::force_flag_bool)
-        {
-            memory->write<bool>(renderview_addr + roblox::offsets::renderview::force_flag_bool, false);
-        }
+        memory->write<std::uint8_t>(renderview_addr + roblox::offsets::renderview::force_flag_byte, 0u);
+        memory->write<bool>(renderview_addr + roblox::offsets::renderview::force_flag_bool, false);
     }
 
     void stop()

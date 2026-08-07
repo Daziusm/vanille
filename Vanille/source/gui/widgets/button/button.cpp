@@ -1,5 +1,5 @@
 #include "../widgets.h"
-#include "../../colors/colors.h"
+#include "../../colors/colors_new.h"
 #include <imgui/imgui_internal.h>
 
 namespace

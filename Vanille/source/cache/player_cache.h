@@ -21,6 +21,8 @@ namespace cache
         std::string display_name;
         std::uint64_t user_id = 0;
         std::uintptr_t team = 0;
+        bool pf_enemy = false;
+        bool pf_enemy_known = false;
         bool has_team_billboard = false;
         float health = 0.0f;
         float max_health = 0.0f;

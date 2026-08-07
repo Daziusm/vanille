@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "sdk/engine.h"
 #include "sdk/part.h"
 

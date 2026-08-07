@@ -9,6 +9,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif
 #include <imgui.h>
+#include "gui/globals/globals.h"
 
 struct ImGuiIO;
 struct ImVec2;

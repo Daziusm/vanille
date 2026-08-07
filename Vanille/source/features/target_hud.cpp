@@ -14,8 +14,9 @@
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
 #include "features/aimbot.h"
-#include "globals/globals.h"
-#include "gui/colors/colors.h"
+#include "features/free_aim.h"
+#include "features/triggerbot.h"
+#include "globals/globals_fixed.h"
 #include "gui/overlay.hpp"
 #include "gui/resources/fonts.h"
 #include "sdk/camera.h"
@@ -236,11 +237,10 @@ namespace
     void draw_panel_background(ImDrawList* draw, const ImVec2& pos, const ImVec2& size, float rounding)
     {
         const ImVec2 br(pos.x + size.x, pos.y + size.y);
-        const ImU32 top_col = ImGui::GetColorU32(ImVec4(0.075f, 0.075f, 0.078f, 0.92f));
-        const ImU32 bottom_col = ImGui::GetColorU32(ImVec4(0.020f, 0.020f, 0.022f, 0.94f));
+        const ImU32 panel_col = ImGui::GetColorU32(ImVec4(0.075f, 0.075f, 0.078f, 0.92f));
         const ImU32 border_col = ImGui::GetColorU32(c_colors::main_border);
 
-        c_colors::draw_rounded_gradient_rect(draw, pos, br, top_col, bottom_col, rounding);
+        draw->AddRectFilled(pos, br, panel_col, rounding);
         draw->AddRect(pos, br, border_col, rounding, 0, 1.0f);
     }
 
@@ -271,14 +271,45 @@ namespace
 
         return std::nullopt;
     }
+    std::uintptr_t resolve_locked_player_address()
+    {
+        if (features->enable_aimbot)
+        {
+            const std::uintptr_t aimbot_locked = aimbot::get_locked_player();
+            if (aimbot_locked != 0)
+            {
+                return aimbot_locked;
+            }
+        }
+
+        if (features->enable_free_aim)
+        {
+            const std::uintptr_t silent_locked = free_aim::get_locked_player();
+            if (silent_locked != 0)
+            {
+                return silent_locked;
+            }
+        }
+
+        if (features->enable_triggerbot)
+        {
+            const std::uintptr_t trigger_locked = triggerbot::get_locked_player();
+            if (trigger_locked != 0)
+            {
+                return trigger_locked;
+            }
+        }
+
+        return 0;
+    }
 }
 
 void target_hud::render()
 {
-    if (!features->enable_aimbot || !features->enable_target_hud)
+    if (!features->enable_target_hud)
         return;
 
-    const std::uintptr_t locked_address = aimbot::get_locked_player();
+    const std::uintptr_t locked_address = resolve_locked_player_address();
     if (locked_address == 0)
         return;
 

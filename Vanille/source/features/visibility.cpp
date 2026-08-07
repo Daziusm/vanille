@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "memory/memory.h"
 #include "sdk/part.h"
 #include "sdk/offsets.h"

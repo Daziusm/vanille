@@ -6,10 +6,9 @@
 #include <imgui/imgui.h>
 #include <backends/imgui_impl_win32.h>
 #include <backends/imgui_impl_dx11.h>
-#include "colors/colors.h"
+#include "globals/globals_fixed.h"
 #include "widgets/widgets.h"
 #include "menu/menu.h"
-#include "globals/globals.h"
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
 #include "fonts/font_verdana_regular.h"
@@ -324,6 +323,29 @@ static bool g_media_lyrics_open = false;
 static float g_lyrics_scroll_offset = 0.0f;
 static float g_lyrics_panel_open_anim = 0.0f;
 static std::string g_lyrics_scroll_track_key;
+static constexpr float k_media_lyrics_full_height = 228.0f;
+static constexpr float k_media_lyrics_progress_height = 46.0f;
+static constexpr float k_media_lyrics_expanded_min_width = 368.0f;
+static constexpr float k_lyrics_scroll_anim_duration = 0.28f;
+static constexpr double k_lyrics_seek_threshold_seconds = 1.5;
+static constexpr double k_lyrics_forward_resync_seconds = 0.35;
+
+static int g_lyrics_display_line = -1;
+static float g_lyrics_scroll_line = 0.0f;
+static float g_lyrics_scroll_anim_from = 0.0f;
+static double g_lyrics_scroll_anim_start = -1.0;
+static std::string g_lyrics_media_key;
+static double g_lyrics_last_snap_position = -1.0;
+
+struct lyrics_playback_clock
+{
+    std::string media_key;
+    double anchor_position = 0.0;
+    std::chrono::steady_clock::time_point anchor_time{};
+    bool initialized = false;
+};
+
+static lyrics_playback_clock g_lyrics_clock;
 static RECT g_watermark_island_client_rect{};
 static bool g_watermark_island_hittest_active = false;
 static ImVec2 g_watermark_island_offset{};
@@ -343,6 +365,7 @@ struct media_island_layout
 
 static std::string ellipsize_text(ImFont* font, float font_size, const std::string& text, float max_width);
 static media_island_layout compute_media_island_layout(const vanille::media::snapshot& snap);
+static void reset_lyrics_scroll_state();
 static bool cursor_over_floating_islands(HWND hwnd);
 
 static bool point_in_client_rect(HWND hwnd, const RECT& rect)
@@ -915,24 +938,24 @@ namespace
             base.z = clamp01(base.z + delta);
             return base;
         };
-        const float delta = 0.04f;
+        const float delta = 0.018f;
 
         c_colors::top_accent_color = t.accent;
         c_colors::bottom_accent_color = c_colors::derive_bottom_accent(t.accent);
 
-        c_colors::top_window_background = adjust(t.window, -delta);
-        c_colors::bottom_window_background = adjust(t.window, delta);
+        c_colors::top_window_background = adjust(t.window, -delta * 0.35f);
+        c_colors::bottom_window_background = adjust(t.window, delta * 0.35f);
 
-        c_colors::top_child_background = adjust(t.child, delta);
-        c_colors::bottom_child_background = adjust(t.child, -delta);
+        c_colors::top_child_background = adjust(t.child, delta * 0.35f);
+        c_colors::bottom_child_background = c_colors::derive_bottom_surface(c_colors::top_child_background, 0.012f);
 
-        if (preset_index == 5) 
-            c_colors::bottom_child_background = ImVec4(14.0f / 255.0f, 15.0f / 255.0f, 20.0f / 255.0f, 1.0f);
+        if (preset_index == 5)
+            c_colors::bottom_child_background = c_colors::derive_bottom_surface(c_colors::top_child_background, 0.010f);
 
-        if (preset_index == 6) 
-            c_colors::bottom_child_background = ImVec4(0.055f, 0.055f, 0.055f, 1.0f);
+        if (preset_index == 6)
+            c_colors::bottom_child_background = c_colors::derive_bottom_surface(c_colors::top_child_background, 0.012f);
 
-        if (preset_index == 0) 
+        if (preset_index == 0)
         {
             c_colors::main_border = ImVec4(175.0f / 255.0f, 50.0f / 255.0f, 100.0f / 255.0f, 0.075f);
             c_colors::outter_border = ImVec4(0.016f, 0.016f, 0.016f, 1.0f);
@@ -5218,8 +5241,277 @@ static float smoothstep01(float t)
 
 static float get_media_lyrics_section_height()
 {
-    constexpr float full_height = 176.0f;
-    return full_height * smoothstep01(g_lyrics_panel_open_anim);
+    return k_media_lyrics_full_height * smoothstep01(g_lyrics_panel_open_anim);
+}
+
+static ImFont* media_font_regular()
+{
+    return c_fonts::media_regular ? c_fonts::media_regular : (c_fonts::verdana_regular ? c_fonts::verdana_regular : ImGui::GetFont());
+}
+
+static ImFont* media_font_bold()
+{
+    return c_fonts::media_bold ? c_fonts::media_bold : (c_fonts::verdana_bold ? c_fonts::verdana_bold : ImGui::GetFont());
+}
+
+static ImFont* media_font_lyrics_active()
+{
+    return c_fonts::media_lyrics_active ? c_fonts::media_lyrics_active : media_font_bold();
+}
+
+static ImFont* media_font_lyrics_inactive()
+{
+    return c_fonts::media_lyrics_inactive ? c_fonts::media_lyrics_inactive : media_font_regular();
+}
+
+static ImFont* media_font_caption()
+{
+    return c_fonts::media_caption ? c_fonts::media_caption : media_font_regular();
+}
+
+static void format_media_timestamp(char* buffer, size_t buffer_size, double seconds, bool remaining)
+{
+    if (seconds < 0.0)
+        seconds = 0.0;
+    const int total = static_cast<int>(seconds + 0.5);
+    const int minutes = total / 60;
+    const int secs = total % 60;
+    if (remaining)
+        ImFormatString(buffer, buffer_size, "-%d:%02d", minutes, secs);
+    else
+        ImFormatString(buffer, buffer_size, "%d:%02d", minutes, secs);
+}
+
+static void draw_media_progress_section(
+    ImDrawList* draw_list,
+    const ImRect& lyrics_rect,
+    const vanille::media::snapshot& snap,
+    double playback_seconds)
+{
+    ImFont* caption_font = media_font_caption();
+    const float caption_size = c_fonts::media_caption ? c_fonts::media_caption_size : 12.0f;
+    constexpr float pad_x = 16.0f;
+    constexpr float section_bottom_pad = 12.0f;
+    constexpr float bar_h = 3.0f;
+
+    const float section_top = lyrics_rect.Max.y - k_media_lyrics_progress_height;
+    const float bar_y = section_top + 8.0f;
+    const float bar_x0 = lyrics_rect.Min.x + pad_x;
+    const float bar_x1 = lyrics_rect.Max.x - pad_x;
+    const float progress = snap.duration_seconds > 0.0
+        ? ImClamp(static_cast<float>(playback_seconds / snap.duration_seconds), 0.0f, 1.0f)
+        : 0.0f;
+    const float fill_x = ImLerp(bar_x0, bar_x1, progress);
+
+    draw_list->AddRectFilled(
+        ImVec2(bar_x0, bar_y),
+        ImVec2(bar_x1, bar_y + bar_h),
+        IM_COL32(255, 255, 255, 42),
+        bar_h * 0.5f);
+    if (fill_x > bar_x0)
+    {
+        draw_list->AddRectFilled(
+            ImVec2(bar_x0, bar_y),
+            ImVec2(fill_x, bar_y + bar_h),
+            IM_COL32(255, 255, 255, 235),
+            bar_h * 0.5f);
+    }
+
+    char elapsed_text[16]{};
+    char remaining_text[16]{};
+    format_media_timestamp(elapsed_text, IM_ARRAYSIZE(elapsed_text), playback_seconds, false);
+    if (snap.duration_seconds > 0.0)
+        format_media_timestamp(remaining_text, IM_ARRAYSIZE(remaining_text), snap.duration_seconds - playback_seconds, true);
+
+    const float time_y = bar_y + bar_h + 8.0f;
+    const ImU32 time_col = IM_COL32(255, 255, 255, 170);
+    draw_list->AddText(caption_font, caption_size, ImVec2(bar_x0, time_y), time_col, elapsed_text);
+    if (remaining_text[0] != '\0')
+    {
+        const ImVec2 remaining_size = caption_font->CalcTextSizeA(caption_size, FLT_MAX, 0.0f, remaining_text);
+        draw_list->AddText(
+            caption_font,
+            caption_size,
+            ImVec2(bar_x1 - remaining_size.x, time_y),
+            time_col,
+            remaining_text);
+    }
+}
+
+static float get_media_lyrics_scroll_height()
+{
+    return k_media_lyrics_full_height - k_media_lyrics_progress_height;
+}
+
+static std::string make_media_track_key(const vanille::media::snapshot& snap)
+{
+    return snap.title + '\x1f' + snap.artist;
+}
+
+static int find_active_lyrics_line_index(
+    const std::vector<vanille::media::lyrics_line>& lines,
+    double playback_seconds)
+{
+    if (lines.empty())
+        return -1;
+
+    int current = 0;
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i)
+    {
+        if (lines[static_cast<size_t>(i)].time_seconds <= playback_seconds)
+            current = i;
+        else
+            break;
+    }
+    return current;
+}
+
+static float ease_out_cubic(float t)
+{
+    const float u = 1.0f - ImClamp(t, 0.0f, 1.0f);
+    return 1.0f - u * u * u;
+}
+
+static bool lyrics_position_seeked(double position_seconds)
+{
+    if (g_lyrics_last_snap_position < 0.0)
+        return false;
+    return std::abs(position_seconds - g_lyrics_last_snap_position) > k_lyrics_seek_threshold_seconds;
+}
+
+static double advance_lyrics_playback_seconds(const vanille::media::snapshot& snap, float /*dt*/)
+{
+    if (!snap.active || snap.title.empty())
+    {
+        g_lyrics_clock = {};
+        g_lyrics_last_snap_position = -1.0;
+        return snap.position_seconds;
+    }
+
+    const std::string media_key = make_media_track_key(snap);
+    const bool track_changed = !g_lyrics_clock.initialized || media_key != g_lyrics_clock.media_key;
+    const bool seeked = g_lyrics_clock.initialized && !track_changed && lyrics_position_seeked(snap.position_seconds);
+    const auto now = std::chrono::steady_clock::now();
+
+    if (track_changed || seeked)
+    {
+        g_lyrics_clock.media_key = media_key;
+        g_lyrics_clock.anchor_position = snap.position_seconds;
+        g_lyrics_clock.anchor_time = now;
+        g_lyrics_clock.initialized = true;
+        g_lyrics_last_snap_position = snap.position_seconds;
+        return snap.position_seconds;
+    }
+
+    if (!snap.is_playing)
+    {
+        g_lyrics_clock.anchor_position = snap.position_seconds;
+        g_lyrics_clock.anchor_time = now;
+        g_lyrics_last_snap_position = snap.position_seconds;
+        return snap.position_seconds;
+    }
+
+    const double elapsed = std::chrono::duration<double>(now - g_lyrics_clock.anchor_time).count();
+    double playback_seconds = g_lyrics_clock.anchor_position + elapsed;
+
+    if (snap.position_seconds > playback_seconds + k_lyrics_forward_resync_seconds)
+    {
+        g_lyrics_clock.anchor_position = snap.position_seconds;
+        g_lyrics_clock.anchor_time = now;
+        playback_seconds = snap.position_seconds;
+    }
+
+    if (snap.duration_seconds > 0.0)
+        playback_seconds = (std::min)(playback_seconds, snap.duration_seconds);
+
+    g_lyrics_last_snap_position = snap.position_seconds;
+    return playback_seconds;
+}
+
+static void reset_lyrics_scroll_state()
+{
+    g_lyrics_display_line = -1;
+    g_lyrics_scroll_line = 0.0f;
+    g_lyrics_scroll_anim_from = 0.0f;
+    g_lyrics_scroll_anim_start = -1.0;
+    g_lyrics_media_key.clear();
+    g_lyrics_last_snap_position = -1.0;
+    g_lyrics_scroll_track_key.clear();
+    g_lyrics_clock = {};
+}
+
+static int stabilize_lyrics_active_line(int active_line, const vanille::media::snapshot& snap, bool force_snap)
+{
+    if (active_line < 0)
+        return g_lyrics_display_line;
+
+    if (force_snap || g_lyrics_display_line < 0)
+        return active_line;
+
+    if (!snap.is_playing)
+        return active_line;
+
+    if (active_line >= g_lyrics_display_line)
+        return active_line;
+
+    if (g_lyrics_display_line - active_line == 1)
+        return g_lyrics_display_line;
+
+    return active_line;
+}
+
+static int update_lyrics_display_line(
+    int active_line,
+    const vanille::media::snapshot& snap,
+    bool force_snap)
+{
+    const int target_line = stabilize_lyrics_active_line(active_line, snap, force_snap);
+    if (target_line < 0)
+        return g_lyrics_display_line;
+
+    const std::string media_key = make_media_track_key(snap);
+    const bool track_changed = !media_key.empty() && media_key != g_lyrics_media_key;
+    if (track_changed)
+        g_lyrics_media_key = media_key;
+
+    if (track_changed || force_snap || g_lyrics_display_line < 0)
+    {
+        g_lyrics_display_line = target_line;
+        g_lyrics_scroll_line = static_cast<float>(target_line);
+        g_lyrics_scroll_anim_from = static_cast<float>(target_line);
+        g_lyrics_scroll_anim_start = -1.0;
+        return g_lyrics_display_line;
+    }
+
+    if (target_line == g_lyrics_display_line)
+        return g_lyrics_display_line;
+
+    g_lyrics_scroll_anim_from = g_lyrics_scroll_line;
+    g_lyrics_scroll_anim_start = ImGui::GetTime();
+    g_lyrics_display_line = target_line;
+    return g_lyrics_display_line;
+}
+
+static void update_lyrics_scroll_line()
+{
+    if (g_lyrics_display_line < 0)
+        return;
+
+    const float target = static_cast<float>(g_lyrics_display_line);
+    if (g_lyrics_scroll_anim_start < 0.0)
+    {
+        g_lyrics_scroll_line = target;
+        return;
+    }
+
+    const float elapsed = static_cast<float>(ImGui::GetTime() - g_lyrics_scroll_anim_start);
+    const float t = ImClamp(elapsed / k_lyrics_scroll_anim_duration, 0.0f, 1.0f);
+    g_lyrics_scroll_line = ImLerp(g_lyrics_scroll_anim_from, target, ease_out_cubic(t));
+    if (t >= 1.0f)
+    {
+        g_lyrics_scroll_line = target;
+        g_lyrics_scroll_anim_start = -1.0;
+    }
 }
 
 static media_island_layout compute_media_island_layout(const vanille::media::snapshot& snap)
@@ -5232,12 +5524,14 @@ static media_island_layout compute_media_island_layout(const vanille::media::sna
     constexpr float lyrics_btn_px = 24.0f;
     constexpr float lyrics_gap = 8.0f;
     constexpr ImVec2 padding(12.0f, 10.0f);
-    constexpr float text_column_w = 190.0f;
+    const float lyrics_h = get_media_lyrics_section_height();
+    const bool lyrics_expanded = lyrics_h > 0.5f;
+    const float text_column_w = lyrics_expanded ? 228.0f : 190.0f;
 
-    ImFont* title_font = c_fonts::verdana_bold ? c_fonts::verdana_bold : ImGui::GetFont();
-    ImFont* body_font = c_fonts::verdana_regular ? c_fonts::verdana_regular : ImGui::GetFont();
-    const float title_font_size = title_font->LegacySize;
-    const float body_font_size = body_font->LegacySize;
+    ImFont* title_font = media_font_bold();
+    ImFont* body_font = media_font_regular();
+    const float title_font_size = c_fonts::media_bold ? c_fonts::media_bold_size : title_font->LegacySize;
+    const float body_font_size = c_fonts::media_regular ? c_fonts::media_regular_size : body_font->LegacySize;
 
     const std::string title_text = snap.active && !snap.title.empty()
         ? snap.title
@@ -5256,7 +5550,9 @@ static media_island_layout compute_media_island_layout(const vanille::media::sna
     const float strip_w = strip_pad * 2.0f + button_px * 3.0f + button_gap * 2.0f;
     const float content_height = (std::max)(art_px, (std::max)(text_block_h, strip_h));
     const float content_width = art_px + section_gap + text_column_w + section_gap + strip_w + lyrics_gap + lyrics_btn_px;
-    const ImVec2 island_size(content_width + padding.x * 2.0f, content_height + padding.y * 2.0f);
+    ImVec2 island_size(content_width + padding.x * 2.0f, content_height + padding.y * 2.0f);
+    if (lyrics_expanded)
+        island_size.x = (std::max)(island_size.x, k_media_lyrics_expanded_min_width);
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     float island_y = viewport->WorkPos.y + 10.0f + g_media_island_offset.y;
@@ -5281,7 +5577,6 @@ static media_island_layout compute_media_island_layout(const vanille::media::sna
     layout.player_size = island_size;
     layout.island_size = island_size;
 
-    const float lyrics_h = get_media_lyrics_section_height();
     if (lyrics_h > 0.5f)
     {
         layout.island_size.y += lyrics_h;
@@ -5306,22 +5601,6 @@ static void update_media_island_hittest_rects(HWND hwnd, const media_island_layo
     g_media_lyrics_panel_hittest_active = false;
 }
 
-static int find_current_lyrics_line(const std::vector<vanille::media::lyrics_line>& lines, double position_seconds)
-{
-    if (lines.empty())
-        return -1;
-
-    int current = 0;
-    for (int i = 0; i < static_cast<int>(lines.size()); ++i)
-    {
-        if (lines[static_cast<size_t>(i)].time_seconds <= position_seconds)
-            current = i;
-        else
-            break;
-    }
-    return current;
-}
-
 static void render_media_lyrics_content(
     ImDrawList* draw_list,
     const ImRect& lyrics_rect,
@@ -5329,43 +5608,52 @@ static void render_media_lyrics_content(
     const vanille::media::lyrics_snapshot& lyrics,
     float dt)
 {
-    (void)dt;
     if (lyrics_rect.GetHeight() < 1.0f)
         return;
 
-    constexpr float pad_x = 10.0f;
-    constexpr float pad_y = 10.0f;
-    ImFont* body_font = c_fonts::verdana_regular ? c_fonts::verdana_regular : ImGui::GetFont();
-    ImFont* bold_font = c_fonts::verdana_bold ? c_fonts::verdana_bold : body_font;
-    const float body_font_size = body_font->LegacySize;
-    const float current_font_size = body_font_size + 1.0f;
-    const float line_step = body_font_size + 9.0f;
-    const float viewport_h = lyrics_rect.GetHeight();
+    constexpr float pad_x = 16.0f;
+    ImFont* active_font = media_font_lyrics_active();
+    ImFont* inactive_font = media_font_lyrics_inactive();
+    ImFont* message_font = media_font_regular();
+    const float active_size = c_fonts::media_lyrics_active ? c_fonts::media_lyrics_active_size : 24.0f;
+    const float inactive_size = c_fonts::media_lyrics_inactive ? c_fonts::media_lyrics_inactive_size : 18.0f;
+    const float message_size = c_fonts::media_regular ? c_fonts::media_regular_size : message_font->LegacySize;
+    const float line_step = active_size + 14.0f;
+    const float scroll_viewport_h = get_media_lyrics_scroll_height();
     const float max_text_w = lyrics_rect.GetWidth() - pad_x * 2.0f;
+    const bool seeked = lyrics_position_seeked(snap.position_seconds);
+    const double playback_seconds = advance_lyrics_playback_seconds(snap, dt);
+    const ImRect scroll_rect(
+        lyrics_rect.Min,
+        ImVec2(lyrics_rect.Max.x, lyrics_rect.Max.y - k_media_lyrics_progress_height));
 
     draw_list->AddLine(
-        ImVec2(lyrics_rect.Min.x + pad_x, lyrics_rect.Min.y),
-        ImVec2(lyrics_rect.Max.x - pad_x, lyrics_rect.Min.y),
-        ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.08f)),
+        ImVec2(scroll_rect.Min.x + pad_x, scroll_rect.Min.y),
+        ImVec2(scroll_rect.Max.x - pad_x, scroll_rect.Min.y),
+        IM_COL32(255, 255, 255, 18),
         1.0f);
 
     const auto draw_centered_message = [&](const char* message)
     {
-        const ImVec2 text_size = body_font->CalcTextSizeA(body_font_size, FLT_MAX, 0.0f, message);
+        const ImVec2 text_size = message_font->CalcTextSizeA(message_size, FLT_MAX, 0.0f, message);
         draw_list->AddText(
-            body_font,
-            body_font_size,
+            message_font,
+            message_size,
             ImVec2(
-                lyrics_rect.Min.x + (lyrics_rect.GetWidth() - text_size.x) * 0.5f,
-                lyrics_rect.Min.y + (viewport_h - text_size.y) * 0.5f),
-            ImGui::GetColorU32(c_colors::text_muted),
+                scroll_rect.Min.x + (scroll_rect.GetWidth() - text_size.x) * 0.5f,
+                scroll_rect.Min.y + (scroll_rect.GetHeight() - text_size.y) * 0.5f),
+            IM_COL32(255, 255, 255, 120),
             message);
+        draw_media_progress_section(draw_list, lyrics_rect, snap, playback_seconds);
     };
 
     if (lyrics.track_key != g_lyrics_scroll_track_key)
     {
         g_lyrics_scroll_track_key = lyrics.track_key;
-        g_lyrics_scroll_offset = 0.0f;
+        g_lyrics_display_line = -1;
+        g_lyrics_scroll_line = 0.0f;
+        g_lyrics_scroll_anim_from = 0.0f;
+        g_lyrics_scroll_anim_start = -1.0;
     }
 
     if (lyrics.state == vanille::media::lyrics_state::loading)
@@ -5402,119 +5690,61 @@ static void render_media_lyrics_content(
         return;
     }
 
-    int current_line = -1;
-    if (has_synced)
-        current_line = find_current_lyrics_line(lyrics.synced_lines, snap.position_seconds);
-
-    draw_list->PushClipRect(lyrics_rect.Min, lyrics_rect.Max, true);
-    const float center_y = lyrics_rect.Min.y + viewport_h * 0.5f;
-
-    if (has_synced && current_line >= 0)
+    int display_line = 0;
+    if (has_synced && !lyrics.synced_lines.empty())
     {
-        float line_progress = 0.0f;
-        const vanille::media::lyrics_line& active_line = lyrics.synced_lines[static_cast<size_t>(current_line)];
-        double line_end = snap.duration_seconds;
-        if (current_line + 1 < static_cast<int>(lyrics.synced_lines.size()))
-            line_end = lyrics.synced_lines[static_cast<size_t>(current_line + 1)].time_seconds;
-        if (line_end > active_line.time_seconds + 0.001)
+        const int active_line = find_active_lyrics_line_index(lyrics.synced_lines, playback_seconds);
+        display_line = update_lyrics_display_line(active_line, snap, !snap.is_playing || seeked);
+    }
+    else
+    {
+        const int plain_line_count = static_cast<int>(display_lines.size());
+        int current_plain_line = 0;
+        if (plain_line_count > 0 && snap.duration_seconds > 0.0)
         {
-            line_progress = static_cast<float>(
-                (snap.position_seconds - active_line.time_seconds) / (line_end - active_line.time_seconds));
-            line_progress = ImClamp(line_progress, 0.0f, 1.0f);
+            const float progress = static_cast<float>(playback_seconds / snap.duration_seconds);
+            current_plain_line = ImClamp(
+                static_cast<int>(progress * static_cast<float>(plain_line_count)),
+                0,
+                plain_line_count - 1);
         }
-
-        const float scroll_bias = line_progress * line_step;
-        for (int i = 0; i < static_cast<int>(display_lines.size()); ++i)
-        {
-            const float line_center_y = center_y + static_cast<float>(i - current_line) * line_step - scroll_bias;
-            if (line_center_y < lyrics_rect.Min.y - line_step || line_center_y > lyrics_rect.Max.y + line_step)
-                continue;
-
-            const bool is_current = i == current_line;
-            ImFont* font = is_current ? bold_font : body_font;
-            const float font_size = is_current ? current_font_size : body_font_size;
-            const std::string text = ellipsize_text(font, font_size, display_lines[static_cast<size_t>(i)], max_text_w);
-            const ImVec2 text_size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, text.c_str());
-
-            const float dist = ImAbs(line_center_y - center_y);
-            const float fade_span = viewport_h * 0.45f;
-            const float alpha = ImLerp(1.0f, 0.28f, ImClamp(dist / fade_span, 0.0f, 1.0f));
-
-            ImVec4 color = is_current ? c_colors::top_accent_color : c_colors::text_muted;
-            color.w *= alpha;
-
-            draw_list->AddText(
-                font,
-                font_size,
-                ImVec2(
-                    lyrics_rect.Min.x + (lyrics_rect.GetWidth() - text_size.x) * 0.5f,
-                    line_center_y - text_size.y * 0.5f),
-                ImGui::GetColorU32(color),
-                text.c_str());
-        }
-
-        draw_list->PopClipRect();
-        return;
+        display_line = update_lyrics_display_line(current_plain_line, snap, !snap.is_playing || seeked);
     }
 
-    struct lyric_row_layout
-    {
-        float y_offset = 0.0f;
-        float height = 0.0f;
-        std::string text;
-    };
+    update_lyrics_scroll_line();
 
-    std::vector<lyric_row_layout> rows;
-    rows.reserve(display_lines.size());
-    float total_content_h = 0.0f;
+    draw_list->PushClipRect(scroll_rect.Min, scroll_rect.Max, true);
+    const float center_y = scroll_rect.Min.y + scroll_viewport_h * 0.5f;
+
     for (int i = 0; i < static_cast<int>(display_lines.size()); ++i)
     {
-        lyric_row_layout row;
-        row.y_offset = total_content_h;
-        row.text = ellipsize_text(body_font, body_font_size, display_lines[static_cast<size_t>(i)], max_text_w);
-        row.height = line_step;
-        total_content_h += row.height;
-        rows.push_back(std::move(row));
-    }
-
-    const float max_scroll = ImMax(0.0f, total_content_h + pad_y * 2.0f - viewport_h);
-    float target_scroll = 0.0f;
-    if (snap.duration_seconds > 0.0)
-    {
-        const float progress = static_cast<float>(snap.position_seconds / snap.duration_seconds);
-        target_scroll = max_scroll * ImClamp(progress, 0.0f, 1.0f);
-    }
-
-    g_lyrics_scroll_offset = target_scroll;
-    const float content_origin_y = lyrics_rect.Min.y + pad_y - g_lyrics_scroll_offset;
-
-    for (int i = 0; i < static_cast<int>(rows.size()); ++i)
-    {
-        const lyric_row_layout& row = rows[static_cast<size_t>(i)];
-        const float line_top = content_origin_y + row.y_offset;
-        const float line_bottom = line_top + row.height;
-        if (line_bottom < lyrics_rect.Min.y || line_top > lyrics_rect.Max.y)
+        const float line_center_y = center_y + (static_cast<float>(i) - g_lyrics_scroll_line) * line_step;
+        if (line_center_y < scroll_rect.Min.y - line_step || line_center_y > scroll_rect.Max.y + line_step)
             continue;
 
-        const float line_center = line_top + row.height * 0.5f;
-        const float dist = ImAbs(line_center - center_y);
-        const float fade_span = viewport_h * 0.45f;
-        const float alpha = ImLerp(1.0f, 0.28f, ImClamp(dist / fade_span, 0.0f, 1.0f));
+        const bool is_current = i == display_line;
+        ImFont* line_font = is_current ? active_font : inactive_font;
+        const float line_font_size = is_current ? active_size : inactive_size;
+        const std::string text = ellipsize_text(line_font, line_font_size, display_lines[static_cast<size_t>(i)], max_text_w);
+        const ImVec2 text_size = line_font->CalcTextSizeA(line_font_size, FLT_MAX, 0.0f, text.c_str());
 
-        ImVec4 color = c_colors::text_muted;
-        color.w *= alpha;
+        const float dist = ImAbs(line_center_y - center_y);
+        const float fade_span = scroll_viewport_h * 0.42f;
+        const float fade = ImLerp(1.0f, 0.22f, ImClamp(dist / fade_span, 0.0f, 1.0f));
+        const ImU32 color = is_current
+            ? IM_COL32(255, 255, 255, static_cast<int>(255.0f * fade))
+            : IM_COL32(255, 255, 255, static_cast<int>(108.0f * fade));
 
-        const ImVec2 text_size = body_font->CalcTextSizeA(body_font_size, FLT_MAX, 0.0f, row.text.c_str());
         draw_list->AddText(
-            body_font,
-            body_font_size,
-            ImVec2(
-                lyrics_rect.Min.x + (lyrics_rect.GetWidth() - text_size.x) * 0.5f,
-                line_top + (row.height - text_size.y) * 0.5f),
-            ImGui::GetColorU32(color),
-            row.text.c_str());
+            line_font,
+            line_font_size,
+            ImVec2(scroll_rect.Min.x + pad_x, line_center_y - text_size.y * 0.5f),
+            color,
+            text.c_str());
     }
+
     draw_list->PopClipRect();
+    draw_media_progress_section(draw_list, lyrics_rect, snap, playback_seconds);
 }
 
 void render_media_player_widget()
@@ -5524,7 +5754,7 @@ void render_media_player_widget()
     const float target_anim = g_media_lyrics_open ? 1.0f : 0.0f;
     g_lyrics_panel_open_anim += (target_anim - g_lyrics_panel_open_anim) * ImMin(1.0f, dt * 10.0f);
     if (!g_media_lyrics_open && g_lyrics_panel_open_anim < 0.01f)
-        g_lyrics_scroll_offset = 0.0f;
+        reset_lyrics_scroll_state();
 
     const auto snap = vanille::media::get_snapshot();
     const auto lyrics = vanille::media::get_lyrics();
@@ -5536,12 +5766,14 @@ void render_media_player_widget()
     constexpr float button_gap = 6.0f;
     constexpr float strip_pad = 4.0f;
     constexpr ImVec2 padding(12.0f, 10.0f);
-    constexpr float text_column_w = 190.0f;
+    const float lyrics_h = get_media_lyrics_section_height();
+    const bool lyrics_expanded = lyrics_h > 0.5f;
+    const float text_column_w = lyrics_expanded ? 228.0f : 190.0f;
 
-    ImFont* title_font = c_fonts::verdana_bold ? c_fonts::verdana_bold : ImGui::GetFont();
-    ImFont* body_font = c_fonts::verdana_regular ? c_fonts::verdana_regular : ImGui::GetFont();
-    const float title_font_size = title_font->LegacySize;
-    const float body_font_size = body_font->LegacySize;
+    ImFont* title_font = media_font_bold();
+    ImFont* body_font = media_font_regular();
+    const float title_font_size = c_fonts::media_bold ? c_fonts::media_bold_size : title_font->LegacySize;
+    const float body_font_size = c_fonts::media_regular ? c_fonts::media_regular_size : body_font->LegacySize;
 
     const std::string title_text = snap.active && !snap.title.empty()
         ? snap.title
@@ -5557,7 +5789,6 @@ void render_media_player_widget()
     const float text_block_h = title_size.y + 3.0f + artist_size.y;
     const float strip_h = button_px + strip_pad * 2.0f;
     const float content_height = (std::max)(art_px, (std::max)(text_block_h, strip_h));
-    const float lyrics_h = get_media_lyrics_section_height();
 
     const ImVec2 island_pos = layout.island_pos;
     const ImVec2 island_size = layout.island_size;
@@ -5607,13 +5838,13 @@ void render_media_player_widget()
         title_font,
         title_font_size,
         ImVec2(cursor_x, text_top),
-        ImGui::GetColorU32(c_colors::top_accent_color),
+        IM_COL32(255, 255, 255, 245),
         title_draw.c_str());
     draw_list->AddText(
         body_font,
         body_font_size,
         ImVec2(cursor_x, text_top + title_size.y + 3.0f),
-        ImGui::GetColorU32(c_colors::text_muted),
+        IM_COL32(255, 255, 255, 150),
         artist_draw.c_str());
     cursor_x += text_column_w + section_gap;
 
@@ -6855,17 +7086,18 @@ void vanille::overlay::run_overlay()
     style.GrabRounding = c_colors::widget_rounding;
     style.TabRounding = c_colors::widget_rounding;
 
-    const unsigned int freetype_flags = ImGuiFreeTypeBuilderFlags_MonoHinting | ImGuiFreeTypeBuilderFlags_Monochrome;
+    const unsigned int smooth_freetype_flags = ImGuiFreeTypeBuilderFlags_LightHinting;
     io.Fonts->SetFontLoader(ImGuiFreeType::GetFontLoader());
+    io.Fonts->FontLoaderFlags = smooth_freetype_flags;
 
-    auto make_cfg = []()
+    auto make_cfg = [&](unsigned int extra_flags = 0)
     {
         ImFontConfig cfg{};
         cfg.PixelSnapH = false;
         cfg.OversampleH = 3;
         cfg.OversampleV = 1;
-        cfg.RasterizerMultiply = 1.0f;
-        cfg.FontLoaderFlags = 0;
+        cfg.RasterizerMultiply = 1.12f;
+        cfg.FontLoaderFlags = smooth_freetype_flags | extra_flags;
         return cfg;
     };
 
@@ -6915,43 +7147,38 @@ void vanille::overlay::run_overlay()
         return nullptr;
     };
 
-    io.Fonts->FontLoaderFlags = 0;
+    io.Fonts->FontLoaderFlags = smooth_freetype_flags;
     ImFontConfig ui_cfg = make_cfg();
-    ui_cfg.PixelSnapH = false;
-    ui_cfg.OversampleH = 3;
-    ui_cfg.OversampleV = 1;
-    ui_cfg.RasterizerMultiply = 1.05f;
 
     c_fonts::verdana_regular = load_first_available_font(
-        {"PlusJakartaSans-Regular.ttf", "Inter-Regular.otf", "Inter-Regular.ttf", "segoeui.ttf", "Segoe UI.ttf"},
+        {"segoeuisb.ttf", "Segoe UI Semibold.ttf", "segoeui.ttf", "Segoe UI.ttf",
+         "PlusJakartaSans-Medium.ttf", "PlusJakartaSans-Regular.ttf", "Inter-Medium.otf", "Inter-Regular.otf"},
         c_fonts::verdana_regular_size, ui_cfg);
 
     c_fonts::verdana_bold = load_first_available_font(
-        {"PlusJakartaSans-SemiBold.ttf", "PlusJakartaSans-Bold.ttf", "Inter-SemiBold.otf", "Inter-SemiBold.ttf",
-         "segoeuisb.ttf", "Segoe UI Semibold.ttf", "segoeuib.ttf", "Segoe UI Bold.ttf"},
+        {"segoeuib.ttf", "Segoe UI Bold.ttf", "segoeuisb.ttf", "Segoe UI Semibold.ttf",
+         "PlusJakartaSans-Bold.ttf", "PlusJakartaSans-SemiBold.ttf", "Inter-SemiBold.otf", "Inter-Bold.otf"},
         c_fonts::verdana_bold_size, ui_cfg);
 
     c_fonts::ui_title = load_first_available_font(
-        {"PlusJakartaSans-Bold.ttf", "Inter-SemiBold.otf", "segoeuib.ttf", "Segoe UI Bold.ttf"},
+        {"segoeuib.ttf", "Segoe UI Bold.ttf", "PlusJakartaSans-Bold.ttf", "Inter-Bold.otf"},
         c_fonts::ui_title_size, ui_cfg);
 
     c_fonts::ui_section = load_first_available_font(
-        {"PlusJakartaSans-Medium.ttf", "PlusJakartaSans-Regular.ttf", "Inter-Regular.otf", "segoeui.ttf"},
+        {"segoeuisb.ttf", "Segoe UI Semibold.ttf", "segoeui.ttf", "PlusJakartaSans-Medium.ttf", "Inter-Medium.otf"},
         c_fonts::ui_section_size, ui_cfg);
 
     c_fonts::ui_tab = load_first_available_font(
-        {"PlusJakartaSans-Medium.ttf", "PlusJakartaSans-Regular.ttf", "Inter-Regular.otf", "segoeui.ttf"},
+        {"segoeuisb.ttf", "Segoe UI Semibold.ttf", "segoeui.ttf", "PlusJakartaSans-Medium.ttf", "Inter-Medium.otf"},
         c_fonts::ui_tab_size, ui_cfg);
 
     c_fonts::ui_tab_bold = load_first_available_font(
-        {"PlusJakartaSans-SemiBold.ttf", "PlusJakartaSans-Bold.ttf", "Inter-SemiBold.otf", "segoeuib.ttf"},
+        {"segoeuib.ttf", "Segoe UI Bold.ttf", "segoeuisb.ttf", "PlusJakartaSans-Bold.ttf", "Inter-SemiBold.otf"},
         c_fonts::ui_tab_bold_size, ui_cfg);
 
     if (!c_fonts::verdana_regular || !c_fonts::verdana_bold)
     {
-        io.Fonts->FontLoaderFlags = freetype_flags;
         ImFontConfig verdana_regular_cfg = make_cfg();
-        verdana_regular_cfg.PixelSnapH = true;
         verdana_regular_cfg.FontDataOwnedByAtlas = false;
         if (!c_fonts::verdana_regular)
         {
@@ -6961,14 +7188,12 @@ void vanille::overlay::run_overlay()
         }
 
         ImFontConfig verdana_bold_cfg = make_cfg();
-        verdana_bold_cfg.PixelSnapH = true;
         verdana_bold_cfg.FontDataOwnedByAtlas = false;
         if (!c_fonts::verdana_bold)
         {
             c_fonts::verdana_bold = io.Fonts->AddFontFromMemoryTTF((void*)font_verdana_bold, sizeof(font_verdana_bold),
                                                                    c_fonts::verdana_bold_size, &verdana_bold_cfg);
         }
-        io.Fonts->FontLoaderFlags = 0;
     }
 
     if (!c_fonts::verdana_bold)
@@ -6983,11 +7208,45 @@ void vanille::overlay::run_overlay()
     if (!c_fonts::ui_tab_bold)
         c_fonts::ui_tab_bold = c_fonts::verdana_bold;
 
-    io.Fonts->FontLoaderFlags = 0;
+    ImFontConfig media_cfg = make_cfg();
+    media_cfg.RasterizerMultiply = 1.14f;
+
+    c_fonts::media_regular = load_first_available_font(
+        {"segoeuisb.ttf", "Segoe UI Semibold.ttf", "segoeui.ttf", "Segoe UI.ttf"},
+        c_fonts::media_regular_size,
+        media_cfg);
+    c_fonts::media_bold = load_first_available_font(
+        {"segoeuib.ttf", "Segoe UI Bold.ttf", "segoeuisb.ttf", "Segoe UI Semibold.ttf"},
+        c_fonts::media_bold_size,
+        media_cfg);
+    c_fonts::media_lyrics_active = load_first_available_font(
+        {"segoeuib.ttf", "Segoe UI Bold.ttf", "segoeuisb.ttf", "Segoe UI Semibold.ttf"},
+        c_fonts::media_lyrics_active_size,
+        media_cfg);
+    c_fonts::media_lyrics_inactive = load_first_available_font(
+        {"segoeuisb.ttf", "Segoe UI Semibold.ttf", "segoeui.ttf", "Segoe UI.ttf"},
+        c_fonts::media_lyrics_inactive_size,
+        media_cfg);
+    c_fonts::media_caption = load_first_available_font(
+        {"segoeuisb.ttf", "Segoe UI Semibold.ttf", "segoeui.ttf", "Segoe UI.ttf"},
+        c_fonts::media_caption_size,
+        media_cfg);
+
+    if (!c_fonts::media_bold)
+        c_fonts::media_bold = c_fonts::verdana_bold;
+    if (!c_fonts::media_regular)
+        c_fonts::media_regular = c_fonts::verdana_regular;
+    if (!c_fonts::media_lyrics_active)
+        c_fonts::media_lyrics_active = c_fonts::media_bold;
+    if (!c_fonts::media_lyrics_inactive)
+        c_fonts::media_lyrics_inactive = c_fonts::media_regular;
+    if (!c_fonts::media_caption)
+        c_fonts::media_caption = c_fonts::media_regular;
+
+    io.Fonts->FontLoaderFlags = smooth_freetype_flags;
 
     ImFontConfig tahoma_cfg = make_cfg();
-    tahoma_cfg.PixelSnapH = true;
-    tahoma_cfg.FontLoaderFlags = 0;
+    tahoma_cfg.RasterizerMultiply = 1.08f;
     c_fonts::tahoma = load_windows_font("tahoma.ttf", c_fonts::tahoma_size, tahoma_cfg);
     c_fonts::tahoma_regular = c_fonts::tahoma ? c_fonts::tahoma : c_fonts::verdana_regular;
 
@@ -7002,15 +7261,17 @@ void vanille::overlay::run_overlay()
         c_fonts::tahoma = c_fonts::tahoma_regular;
     }
 
-    io.Fonts->FontLoaderFlags = 0;
-    ImFontConfig pixel7_cfg = make_cfg();
+    io.Fonts->FontLoaderFlags = smooth_freetype_flags;
+    ImFontConfig pixel7_cfg{};
     pixel7_cfg.PixelSnapH = true;
     pixel7_cfg.FontDataOwnedByAtlas = false;
+    pixel7_cfg.FontLoaderFlags = ImGuiFreeTypeBuilderFlags_MonoHinting | ImGuiFreeTypeBuilderFlags_Monochrome;
     c_fonts::pixel7 = io.Fonts->AddFontFromMemoryTTF((void*)font_pixel7, sizeof(font_pixel7), c_fonts::pixel7_size, &pixel7_cfg);
 
-    ImFontConfig smallest_pixel_cfg = make_cfg();
+    ImFontConfig smallest_pixel_cfg{};
     smallest_pixel_cfg.PixelSnapH = true;
     smallest_pixel_cfg.FontDataOwnedByAtlas = false;
+    smallest_pixel_cfg.FontLoaderFlags = ImGuiFreeTypeBuilderFlags_MonoHinting | ImGuiFreeTypeBuilderFlags_Monochrome;
     c_fonts::smallest_pixel = io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(font_smallest_pixel), sizeof(font_smallest_pixel), c_fonts::smallest_pixel_size, &smallest_pixel_cfg);
 
     ImFontConfig proggy_cfg = make_cfg();

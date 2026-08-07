@@ -5,6 +5,7 @@
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
+#include "../globals/globals.h"
 #include <string>
 #include <algorithm>
 #include <windows.h>
@@ -24,7 +25,7 @@ namespace c_widgets
     bool keybind(const char* id, c_keybind& keybind, const ImVec2& size = ImVec2(0.0f, 0.0f));
     bool input_text(const char* label, char* buffer, size_t buffer_size, ImGuiInputTextFlags flags = 0);
 
-    bool begin_padded_child(const char* str_id, ImGuiChildFlags child_flags = 0, ImGuiWindowFlags window_flags = 0, ImVec2 preferred_size = ImVec2(-1.0f, -1.0f), bool use_margin = true, bool use_gradient = true, bool use_accent = false, bool use_clip = false, bool block_parent_drag = false, bool use_accent_background = false, bool remove_accent_top_padding = false, bool allow_scroll = false);
+    bool begin_padded_child(const char* str_id, ImGuiChildFlags child_flags = 0, ImGuiWindowFlags window_flags = 0, ImVec2 preferred_size = ImVec2(-1.0f, -1.0f), bool use_margin = true, bool use_gradient = false, bool use_accent = false, bool use_clip = false, bool block_parent_drag = false, bool use_accent_background = false, bool remove_accent_top_padding = false, bool allow_scroll = false);
     void end_padded_child();
 
     float padded_child_margin();

@@ -1,18 +1,12 @@
 #include "utils/logger.h"
 
 #include <format>
+#include <fstream>
 #include <mutex>
 #include <print>
 #include <string>
 #include <string_view>
 #include <windows.h>
-
-#ifndef VANILLE_ENABLE_CONSOLE
-#include <shlobj.h>
-#include <shlwapi.h>
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "shlwapi.lib")
-#endif
 
 namespace {
     HANDLE resolve_handle(std::FILE* stream)
@@ -75,48 +69,54 @@ namespace {
         return std::format("{:02}:{:02}:{:02}", system_time.wHour, system_time.wMinute, system_time.wSecond);
     }
 
-#ifndef VANILLE_ENABLE_CONSOLE
-    std::mutex g_log_mutex;
+    std::mutex g_log_file_mutex;
+    std::string g_log_file_path;
+    bool g_log_file_ready = false;
 
-    void write_release_log(std::string_view prefix, std::string_view message)
+    void ensure_log_file_path()
     {
-        std::lock_guard lock(g_log_mutex);
-
-        wchar_t app_data[MAX_PATH]{};
-        if (FAILED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, app_data)))
+        if (g_log_file_ready)
+        {
             return;
+        }
 
-        wchar_t log_dir[MAX_PATH]{};
-        PathCombineW(log_dir, app_data, L"Chocola");
-        CreateDirectoryW(log_dir, nullptr);
+        char module_path[MAX_PATH]{};
+        if (GetModuleFileNameA(nullptr, module_path, MAX_PATH) != 0)
+        {
+            const auto parent = std::string(module_path);
+            const auto slash = parent.find_last_of("\\/");
+            if (slash != std::string::npos)
+            {
+                g_log_file_path = parent.substr(0, slash + 1) + "vanille-debug.log";
+            }
+        }
 
-        wchar_t log_path[MAX_PATH]{};
-        PathCombineW(log_path, log_dir, L"vanille.log");
-
-        FILE* file = nullptr;
-        if (_wfopen_s(&file, log_path, L"a") != 0 || !file)
-            return;
-
-        const auto stamp = make_timestamp();
-        std::fprintf(file, "[%s] %.*s %.*s\n",
-            stamp.c_str(),
-            static_cast<int>(prefix.size()), prefix.data(),
-            static_cast<int>(message.size()), message.data());
-        std::fflush(file);
-        std::fclose(file);
+        g_log_file_ready = true;
     }
-#endif
+
+    void append_log_file(std::string_view prefix, std::string_view message)
+    {
+        ensure_log_file_path();
+        if (g_log_file_path.empty())
+        {
+            return;
+        }
+
+        std::lock_guard lock(g_log_file_mutex);
+        std::ofstream output(g_log_file_path, std::ios::app);
+        if (!output.is_open())
+        {
+            return;
+        }
+
+        output << '[' << make_timestamp() << "] " << prefix << ' ' << message << '\n';
+    }
 }
 
 namespace logger_core
 {
     void log_prompt(std::string_view prefix, std::string_view message)
     {
-#ifndef VANILLE_ENABLE_CONSOLE
-        write_release_log(prefix, message);
-        return;
-#endif
-
         const HANDLE handle = resolve_handle(stdout);
         const WORD base_attributes = fetch_default_attributes(false, handle);
         const WORD color = select_color(prefix, base_attributes);
@@ -147,12 +147,6 @@ namespace logger_core
 
     void log_message(std::FILE* stream, std::string_view prefix, std::string_view message)
     {
-#ifndef VANILLE_ENABLE_CONSOLE
-        (void)stream;
-        write_release_log(prefix, message);
-        return;
-#endif
-
         const HANDLE handle = resolve_handle(stream);
         const bool is_error = stream == stderr;
         const WORD base_attributes = fetch_default_attributes(is_error, handle);
@@ -179,5 +173,6 @@ namespace logger_core
             SetConsoleTextAttribute(handle, base_attributes);
         }
         std::print(stream, "{}\n", message);
+        append_log_file(prefix, message);
     }
 }

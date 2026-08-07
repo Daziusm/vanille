@@ -6,12 +6,12 @@
 #include "lua/lua_drawing.h"
 #include "lua/lua_ui_bridge.h"
 #include "lua/script_storage.h"
+#include "explorer/explorer_service.h"
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "sdk/camera.h"
 #include "sdk/player.h"
-#include "gui/colors/colors.h"
 #include "gui/globals/globals.h"
 #include "gui/overlay.hpp"
 #include "gui/widgets/widgets.h"
@@ -249,10 +249,9 @@ namespace lua_vm
             draw_list->AddRectFilled(accent_min, accent_max, ImGui::GetColorU32(c_colors::top_accent_color));
 
             const ImU32 top_color = ImGui::GetColorU32(c_colors::top_window_background);
-            const ImU32 bottom_color = ImGui::GetColorU32(c_colors::bottom_window_background);
             const ImU32 border_color = ImGui::GetColorU32(c_colors::main_border);
 
-            draw_list->AddRectFilledMultiColor(window_position, window_bottom_right, top_color, top_color, bottom_color, bottom_color);
+            draw_list->AddRectFilled(window_position, window_bottom_right, top_color);
             const float border_thickness = 1.0f;
             const ImVec2 inner_min(window_position.x + border_thickness, window_position.y + border_thickness);
             const ImVec2 inner_max(window_bottom_right.x - border_thickness, window_bottom_right.y - border_thickness);
@@ -2304,6 +2303,167 @@ namespace lua_vm
             return 1;
         }
 
+        vanille::explorer::capture_options read_explorer_capture_options(lua_state* state, int table_index)
+        {
+            vanille::explorer::capture_options options{};
+            if (g_runtime.api.lua_type(state, table_index) != lua_type_table)
+            {
+                return options;
+            }
+
+            g_runtime.api.lua_getfield(state, table_index, "max_depth");
+            if (g_runtime.api.lua_type(state, -1) == lua_type_number)
+            {
+                const long long value = static_cast<long long>(to_number(state, -1, 0.0));
+                if (value > 0)
+                {
+                    options.max_depth = static_cast<std::size_t>(value);
+                }
+            }
+            g_runtime.api.lua_settop(state, g_runtime.api.lua_gettop(state) - 1);
+
+            g_runtime.api.lua_getfield(state, table_index, "max_nodes");
+            if (g_runtime.api.lua_type(state, -1) == lua_type_number)
+            {
+                const long long value = static_cast<long long>(to_number(state, -1, 0.0));
+                if (value > 0)
+                {
+                    options.max_nodes = static_cast<std::size_t>(value);
+                }
+            }
+            g_runtime.api.lua_settop(state, g_runtime.api.lua_gettop(state) - 1);
+            return options;
+        }
+
+        void push_explorer_node(lua_state* state, const vanille::explorer::node& item)
+        {
+            g_runtime.api.lua_createtable(state, 0, 6);
+            std::ostringstream address_stream;
+            address_stream << "0x" << std::hex << std::uppercase << item.address;
+            g_runtime.api.lua_pushlstring(state, address_stream.str().c_str(), address_stream.str().size());
+            g_runtime.api.lua_setfield(state, -2, "address");
+            g_runtime.api.lua_pushinteger(state, static_cast<lua_integer>(item.address));
+            g_runtime.api.lua_setfield(state, -2, "address_num");
+            g_runtime.api.lua_pushlstring(state, item.name.c_str(), item.name.size());
+            g_runtime.api.lua_setfield(state, -2, "name");
+            g_runtime.api.lua_pushlstring(state, item.class_name.c_str(), item.class_name.size());
+            g_runtime.api.lua_setfield(state, -2, "class_name");
+            g_runtime.api.lua_pushlstring(state, item.path.c_str(), item.path.size());
+            g_runtime.api.lua_setfield(state, -2, "path");
+
+            g_runtime.api.lua_createtable(state, static_cast<int>(item.children.size()), 0);
+            for (std::size_t i = 0; i < item.children.size(); ++i)
+            {
+                push_explorer_node(state, item.children[i]);
+                g_runtime.api.lua_rawseti(state, -2, static_cast<lua_integer>(i + 1));
+            }
+            g_runtime.api.lua_setfield(state, -2, "children");
+        }
+
+        int lua_explorer_snapshot(lua_state* state)
+        {
+            vanille::explorer::capture_options options{};
+            if (g_runtime.api.lua_gettop(state) >= 1)
+            {
+                options = read_explorer_capture_options(state, 1);
+            }
+
+            const vanille::explorer::snapshot snap = vanille::explorer::capture(options);
+            g_runtime.api.lua_createtable(state, 0, 4);
+            g_runtime.api.lua_pushboolean(state, snap.truncated ? 1 : 0);
+            g_runtime.api.lua_setfield(state, -2, "truncated");
+            g_runtime.api.lua_pushinteger(state, static_cast<lua_integer>(snap.node_count));
+            g_runtime.api.lua_setfield(state, -2, "node_count");
+
+            g_runtime.api.lua_createtable(state, static_cast<int>(snap.roots.size()), 0);
+            for (std::size_t i = 0; i < snap.roots.size(); ++i)
+            {
+                push_explorer_node(state, snap.roots[i]);
+                g_runtime.api.lua_rawseti(state, -2, static_cast<lua_integer>(i + 1));
+            }
+            g_runtime.api.lua_setfield(state, -2, "roots");
+            return 1;
+        }
+
+        int lua_explorer_to_json(lua_state* state)
+        {
+            vanille::explorer::capture_options options{};
+            if (g_runtime.api.lua_gettop(state) >= 1)
+            {
+                options = read_explorer_capture_options(state, 1);
+            }
+
+            const vanille::explorer::snapshot snap = vanille::explorer::capture(options);
+            const std::string json = vanille::explorer::to_json(snap, true);
+            g_runtime.api.lua_pushlstring(state, json.c_str(), json.size());
+            return 1;
+        }
+
+        int lua_explorer_export_json(lua_state* state)
+        {
+            const char* path = g_runtime.api.lua_tolstring(state, 1, nullptr);
+            if (!path || !*path)
+            {
+                g_runtime.api.lua_pushboolean(state, 0);
+                return 1;
+            }
+
+            vanille::explorer::capture_options options{};
+            if (g_runtime.api.lua_gettop(state) >= 2)
+            {
+                options = read_explorer_capture_options(state, 2);
+            }
+
+            g_runtime.api.lua_pushboolean(state, vanille::explorer::export_json_to_file(path, options) ? 1 : 0);
+            return 1;
+        }
+
+        int lua_explorer_export_mcp(lua_state* state)
+        {
+            vanille::explorer::capture_options options{};
+            if (g_runtime.api.lua_gettop(state) >= 1)
+            {
+                options = read_explorer_capture_options(state, 1);
+            }
+
+            g_runtime.api.lua_pushboolean(state, vanille::explorer::export_mcp_snapshot(options) ? 1 : 0);
+            return 1;
+        }
+
+        int lua_explorer_mcp_path(lua_state* state)
+        {
+            const std::string path = vanille::explorer::default_mcp_snapshot_path();
+            g_runtime.api.lua_pushlstring(state, path.c_str(), path.size());
+            return 1;
+        }
+
+        int lua_explorer_find_by_path(lua_state* state)
+        {
+            const char* path = g_runtime.api.lua_tolstring(state, 1, nullptr);
+            if (!path || !*path)
+            {
+                g_runtime.api.lua_pushnil(state);
+                return 1;
+            }
+
+            vanille::explorer::capture_options options{};
+            if (g_runtime.api.lua_gettop(state) >= 2)
+            {
+                options = read_explorer_capture_options(state, 2);
+            }
+
+            const vanille::explorer::snapshot snap = vanille::explorer::capture(options);
+            const auto found = vanille::explorer::find_by_path(snap, path);
+            if (!found)
+            {
+                g_runtime.api.lua_pushnil(state);
+                return 1;
+            }
+
+            push_explorer_node(state, *found);
+            return 1;
+        }
+
         void set_table_function(lua_state* state, const char* name, lua_c_function function)
         {
             push_c_function(state, function);
@@ -2365,6 +2525,15 @@ namespace lua_vm
             g_runtime.api.lua_createtable(state, 0, 1);
             set_table_function(state, "new", lua_udim2_new);
             g_runtime.api.lua_setglobal(state, "UDim2");
+
+            g_runtime.api.lua_createtable(state, 0, 6);
+            set_table_function(state, "snapshot", lua_explorer_snapshot);
+            set_table_function(state, "to_json", lua_explorer_to_json);
+            set_table_function(state, "export_json", lua_explorer_export_json);
+            set_table_function(state, "export_mcp", lua_explorer_export_mcp);
+            set_table_function(state, "mcp_path", lua_explorer_mcp_path);
+            set_table_function(state, "find_by_path", lua_explorer_find_by_path);
+            g_runtime.api.lua_setglobal(state, "explorer");
         }
 
         void register_globals(lua_state* state)

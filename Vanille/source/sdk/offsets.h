@@ -51,20 +51,17 @@ namespace offsets {
         OFFSET_ENTRY(datamodel, datamodel_ptr0)
         OFFSET_ENTRY(datamodel, datamodel_ptr1)
         OFFSET_ENTRY(datamodel, place_id)
-        OFFSET_ENTRY(datamodel, workspace)
     }
 
     namespace visualengine {
         OFFSET_ENTRY(visualengine, visualengine_ptr)
         OFFSET_ENTRY(visualengine, view_matrix)
         OFFSET_ENTRY(visualengine, dimensions)
-        OFFSET_ENTRY(visualengine, render_view)
-        OFFSET_ENTRY(visualengine, fake_datamodel)
     }
 
     namespace renderview {
-        OFFSET_ENTRY(renderview, force_flag_byte) // LightingValid
-        OFFSET_ENTRY(renderview, force_flag_bool) // SkyboxValid
+        OFFSET_ENTRY(renderview, force_flag_byte) // 0x148
+        OFFSET_ENTRY(renderview, force_flag_bool) // 0x2CD
     }
 
     namespace players {
@@ -189,7 +186,6 @@ namespace offsets {
         OFFSET_ENTRY(lighting, fog_start)
         OFFSET_ENTRY(lighting, geographic_latitude)
         OFFSET_ENTRY(lighting, outdoor_ambient)
-        OFFSET_ENTRY(lighting, sky)
     }
 
     namespace sky {

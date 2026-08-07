@@ -14,7 +14,7 @@
 
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
-#include "globals/globals.h"
+#include "globals/globals_fixed.h"
 #include "gui/overlay.hpp"
 
 namespace

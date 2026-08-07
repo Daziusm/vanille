@@ -15,8 +15,8 @@
 
 #include "cache/local_player_cache.h"
 #include "cache/player_cache.h"
-#include "globals/globals.h"
-#include "gui/colors/colors.h"
+#include "cache/team_utils.h"
+#include "globals/globals_fixed.h"
 #include "gui/overlay.hpp"
 #include "features/visibility.h"
 #include "sdk/camera.h"
@@ -62,6 +62,12 @@ namespace
         enemy
     };
     constexpr std::int64_t lostfront_place_id = 102871156420149;
+    constexpr std::int64_t phantom_forces_place_id = 292439477;
+
+    bool is_phantom_forces_silent_mode()
+    {
+        return globals && globals->game_id == phantom_forces_place_id;
+    }
 
     player_relation determine_relation(const cache::player_state& player, std::uintptr_t local_team)
     {
@@ -74,6 +80,11 @@ namespace
         if (status_override == 2)
         {
             return player_relation::friendly;
+        }
+
+        if (is_phantom_forces_silent_mode() && player.pf_enemy_known)
+        {
+            return player.pf_enemy ? player_relation::enemy : player_relation::friendly;
         }
 
         return player_relation::neutral;
@@ -592,7 +603,16 @@ namespace
     std::optional<aim_target_state> get_target_copy()
     {
         std::lock_guard<std::mutex> lock(target_mutex);
-        if (!current_target.has_screen || current_target.player_address == 0) return std::nullopt;
+        if (current_target.player_address == 0)
+        {
+            return std::nullopt;
+        }
+
+        if (!current_target.has_screen && !is_phantom_forces_silent_mode())
+        {
+            return std::nullopt;
+        }
+
         return current_target;
     }
 
@@ -632,7 +652,7 @@ namespace
 
         while (running.load(std::memory_order_relaxed))
         {
-            if (features->free_aim_silent_mode == 1)
+            if (is_phantom_forces_silent_mode() || features->free_aim_silent_mode == 1)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
@@ -720,7 +740,8 @@ namespace
             }
             const bool key_active = keybind.type == c_keybind::ALWAYS ? true : keybind.enabled;
             const auto local = cache::localplayer->snapshot();
-            const bool viewport_mode = features->free_aim_silent_mode == 1;
+            const bool pf_camera_mode = is_phantom_forces_silent_mode();
+            const bool viewport_mode = features->free_aim_silent_mode == 1 && !pf_camera_mode;
             if (last_viewport_mode && !viewport_mode && local.camera.is_valid())
             {
                 rbx::visualengine_t visual(globals->visualengine.get_address());
@@ -753,7 +774,7 @@ namespace
                 continue;
             }
 
-            if (local.address == 0)
+            if (local.address == 0 && !(pf_camera_mode && local.camera.is_valid()))
             {
                 if (viewport_mode && local.camera.is_valid())
                 {
@@ -781,27 +802,25 @@ namespace
                 continue;
             }
 
-            const rbx::Vector2 reference = get_cursor_client_position(*dimensions).value_or(*dimensions * 0.5f);
+            const rbx::Vector2 reference = pf_camera_mode
+                ? (*dimensions * 0.5f)
+                : get_cursor_client_position(*dimensions).value_or(*dimensions * 0.5f);
             const bool limit_fov = features->free_aim_limit_fov && features->free_aim_fov_radius > 0.0f;
 
             std::optional<rbx::Vector3> local_origin;
             rbx::Vector3 origin_temp{};
-            if (get_part_position(local.parts.humanoid_root_part, origin_temp))
-            {
-                local_origin = origin_temp;
-            }
-            else if (local.camera.is_valid())
+            if (local.camera.is_valid())
             {
                 local_origin = local.camera.get_camera_position();
             }
-            std::optional<rbx::Vector3> prediction_origin;
+            else if (get_part_position(local.parts.humanoid_root_part, origin_temp))
+            {
+                local_origin = origin_temp;
+            }
+            std::optional<rbx::Vector3> prediction_origin = local_origin;
             if (local.camera.is_valid())
             {
                 prediction_origin = local.camera.get_camera_position();
-            }
-            else
-            {
-                prediction_origin = local_origin;
             }
 
             const float max_distance = features->free_aim_max_distance;
@@ -863,21 +882,23 @@ namespace
                     }
                     if (features->free_aim_only_enemies && relation != player_relation::enemy)
                     {
-                        return true;
-                    }
-                    if (features->free_aim_check_team)
-                    {
-                        if (globals->game_id == lostfront_place_id)
+                        if (is_phantom_forces_silent_mode())
                         {
-                            if (player.has_team_billboard)
+                            if (player.pf_enemy_known)
                             {
                                 return true;
                             }
+                            if (cache::team_utils::is_teammate(local, player))
+                            {
+                                return true;
+                            }
+                            return false;
                         }
-                        else if (local_team != 0 && player.team == local_team)
-                        {
-                            return true;
-                        }
+                        return true;
+                    }
+                    if (features->free_aim_check_team && cache::team_utils::is_teammate(local, player))
+                    {
+                        return true;
                     }
                     if (features->free_aim_check_health && player.health <= 0.0f)
                     {
@@ -1022,24 +1043,6 @@ namespace
             }
 
         finish_candidate_selection:
-            {
-                std::lock_guard<std::mutex> lock(target_mutex);
-                if (best.has_screen && best.player_address != 0 && in_distance(best))
-                {
-                    current_target = best;
-                    last_locked_address = best.player_address;
-                    locked_player_address.store(best.player_address, std::memory_order_relaxed);
-                }
-                else
-                {
-                    if (!preserve_locked)
-                    {
-                        clear_target_locked();
-                        last_locked_address = 0;
-                    }
-                }
-            }
-
             if (features->enable_free_aim_closest_point && best.has_screen)
             {
                 rbx::Vector3 base_position{};
@@ -1064,7 +1067,22 @@ namespace
                     best.screen_position.x <= dimensions->x && best.screen_position.y <= dimensions->y;
             }
 
-            if (!on_screen)
+            {
+                std::lock_guard<std::mutex> lock(target_mutex);
+                if (best.player_address != 0 && in_distance(best) && (best.has_screen || pf_camera_mode))
+                {
+                    current_target = best;
+                    last_locked_address = best.player_address;
+                    locked_player_address.store(best.player_address, std::memory_order_relaxed);
+                }
+                else if (!preserve_locked)
+                {
+                    clear_target_locked();
+                    last_locked_address = 0;
+                }
+            }
+
+            if (!on_screen && !pf_camera_mode)
             {
                 clear_target();
                 locked_player_address.store(0, std::memory_order_relaxed);
@@ -1091,13 +1109,27 @@ namespace
                     });
             }
 
+            if (pf_camera_mode)
+            {
+                if (!features->enable_aimbot && local.camera.is_valid() &&
+                    best.player_address != 0 && !target_blocked)
+                {
+                    const DirectX::XMFLOAT3X3 rotation = local.camera.look_at(best.world_position);
+                    for (int i = 0; i < 16; ++i)
+                    {
+                        local.camera.set_rotation(rotation);
+                    }
+                }
+                continue;
+            }
+
             const bool active_target = best.has_screen && target_visible && on_screen;
 
             if (viewport_mode)
             {
                 if (local.camera.is_valid())
                 {
-                    if (active_target)
+                    if (active_target && !target_blocked)
                     {
                         const auto viewport = rbx::camera::calculate_viewport(best.screen_position, *dimensions);
                         rbx::camera::set_viewport(local.camera.get_address(), viewport);
@@ -1211,11 +1243,39 @@ namespace free_aim
     std::optional<rbx::Vector3> get_target_world_position()
     {
         const auto target = get_target_copy();
-        if (!target || target->player_address == 0 || !target->has_screen)
+        if (!target || target->player_address == 0)
+        {
+            return std::nullopt;
+        }
+
+        if (!target->has_screen && !(globals && globals->game_id == 292439477))
+        {
+            return std::nullopt;
+        }
+
+        const rbx::Vector3& world = target->world_position;
+        if (!std::isfinite(world.x) || !std::isfinite(world.y) || !std::isfinite(world.z))
         {
             return std::nullopt;
         }
 
         return target->world_position;
+    }
+
+    std::optional<rbx::Vector2> get_target_screen_position()
+    {
+        const auto target = get_target_copy();
+        if (!target || target->player_address == 0 || !target->has_screen)
+        {
+            return std::nullopt;
+        }
+
+        const rbx::Vector2& screen = target->screen_position;
+        if (!std::isfinite(screen.x) || !std::isfinite(screen.y))
+        {
+            return std::nullopt;
+        }
+
+        return screen;
     }
 }
