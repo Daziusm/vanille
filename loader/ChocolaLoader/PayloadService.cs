@@ -12,7 +12,7 @@ namespace Chocola
     {
         const string PayloadResourceName = "payload.zip";
         const string VersionMarker = ".payload_version";
-        const string PayloadEpoch = "8";
+        const string PayloadEpoch = "9";
 
         public static bool EnsureInstalled(string installDir, Action<string> status, out string error)
         {

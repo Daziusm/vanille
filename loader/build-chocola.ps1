@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 $loaderRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $vanilleRoot = Join-Path (Split-Path -Parent $loaderRoot) "Vanille"
 $distDir = Join-Path $loaderRoot "dist"
@@ -9,6 +9,21 @@ $splashSrc = Join-Path $vanilleRoot "assets\loader_icon.png"
 $splashDst = Join-Path $loaderRoot "ChocolaLoader\Resources\splash_sprite.png"
 if (Test-Path $splashSrc) {
     Copy-Item $splashSrc $splashDst -Force
+}
+
+$msbuild = @(
+  "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe",
+  "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $msbuild) {
+  $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+}
+if (-not $msbuild) { throw "MSBuild not found" }
+
+Write-Host "Building Vanille client..."
+& $msbuild "$vanilleRoot\vanille.sln" /p:Configuration=Release /p:Platform=x64 /t:Rebuild /v:m
+if (-not (Test-Path "$vanilleRoot\build\vanille.exe")) {
+    throw "Vanille client build failed: $vanilleRoot\build\vanille.exe missing"
 }
 
 Write-Host "Staging Vanille payload..."
@@ -25,15 +40,6 @@ finally {
 }
 
 Write-Host "Building Vanille loader..."
-$msbuild = @(
-  "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe",
-  "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
-) | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $msbuild) {
-  $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
-}
-if (-not $msbuild) { throw "MSBuild not found" }
-
 & $msbuild "$loaderRoot\ChocolaLoader\Chocola.csproj" /p:Configuration=Release /v:m
 $out = Join-Path $loaderRoot "ChocolaLoader\bin\Release\Vanille.exe"
 if (Test-Path $out) {
