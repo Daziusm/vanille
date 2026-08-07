@@ -58,6 +58,7 @@ namespace offsets {
         OFFSET_ENTRY(visualengine, view_matrix)
         OFFSET_ENTRY(visualengine, dimensions)
         OFFSET_ENTRY(visualengine, render_view)
+        OFFSET_ENTRY(visualengine, fake_datamodel)
     }
 
     namespace renderview {

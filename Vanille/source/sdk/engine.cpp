@@ -86,9 +86,14 @@ namespace
             return 0;
         }
 
-        // roblox-dumper: VisualEngine::FakeDataModel
-        constexpr std::uintptr_t k_visualengine_fake_datamodel_offset = 0xA90;
-        const auto fake_datamodel = memory->read<std::uintptr_t>(visualengine + k_visualengine_fake_datamodel_offset);
+        // VisualEngine::FakeDataModel
+        const auto fake_datamodel_offset = roblox::offsets::visualengine::fake_datamodel;
+        if (!fake_datamodel_offset)
+        {
+            return 0;
+        }
+
+        const auto fake_datamodel = memory->read<std::uintptr_t>(visualengine + fake_datamodel_offset);
         return resolve_fake_datamodel_to_datamodel(fake_datamodel);
     }
 

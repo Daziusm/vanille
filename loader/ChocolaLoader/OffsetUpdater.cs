@@ -412,6 +412,7 @@ namespace Chocola
             yield return Pair("visualengine::view_matrix", G(o, "VisualEngine", "ViewMatrix", strict));
             yield return Pair("visualengine::dimensions", G(o, "VisualEngine", "Dimensions", strict));
             yield return Pair("visualengine::render_view", G(o, "VisualEngine", "RenderView", strict));
+            yield return Pair("visualengine::fake_datamodel", G(o, "VisualEngine", "FakeDataModel", strict));
             yield return Pair("renderview::force_flag_byte", G(o, "RenderView", "LightingValid", strict));
             yield return Pair("renderview::force_flag_bool", G(o, "RenderView", "SkyValid", strict));
             yield return Pair("players::local_player", G(o, "Player", "LocalPlayer", strict));
