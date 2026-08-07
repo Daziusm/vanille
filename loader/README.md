@@ -2,15 +2,9 @@
 
 ## Run
 
-`dist\Vanille.exe` — release build (from [GitHub Releases](https://github.com/Daziusm/vanille/releases/latest) or `build-chocola.ps1`).
+`dist\Chocola.exe` — canonical release build (copied here by `build-chocola.ps1`).
 
-Install dir: `%LOCALAPPDATA%\Chocola\` (contains `vanille.exe` + `values.txt`).
-
-## Source code
-
-Full repo (no compile needed for end users): https://github.com/Daziusm/vanille
-
-Offset file paths: [docs/OFFSETS.md](../docs/OFFSETS.md)
+Dev build output: `ChocolaLoader\bin\Release\Chocola.exe`
 
 ## Build
 
